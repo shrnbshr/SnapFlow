@@ -4,6 +4,8 @@
 
 <h1 align="center">SnapFlow</h1>
 
+<p align="center">不求面面俱到，只求滚动截图简单好用。</p>
+
 <p align="center">
   <a href="https://github.com/shrnbshr/SnapFlow/stargazers"><img src="https://img.shields.io/github/stars/shrnbshr/SnapFlow?style=social&amp;logo=github&amp;label=Stars" alt="GitHub Star 数量"></a>
   <a href="https://github.com/shrnbshr/SnapFlow/releases/latest"><img src="https://img.shields.io/github/v/release/shrnbshr/SnapFlow?style=plastic&amp;label=release&amp;color=blue" alt="最新 Release 版本"></a>
