@@ -206,7 +206,7 @@
     <value>语言</value>
   </data>
   <data xml:space="preserve" name="LanguageHint">
-    <value>保存后生效；缺失译文回退英语</value>
+    <value>保存后生效</value>
   </data>
   <data xml:space="preserve" name="FollowWindows">
     <value>跟随 Windows</value>

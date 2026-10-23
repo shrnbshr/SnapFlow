@@ -45,7 +45,9 @@ internal sealed class ApplicationPreferences
             ? JsonConvert.DeserializeObject<ApplicationPreferences>(File.ReadAllText(path)) ?? throw new JsonException(L("EmptySettings"))
             : new();
         if (!Enum.IsDefined(value.Appearance) || value.Shortcuts == null) throw new JsonException(L("InvalidSettings"));
-        if (!Enum.IsDefined(value.Language)) throw new JsonException(L("InvalidLanguage"));
+        // Migrate retired language IDs without discarding shortcuts, theme or motion preferences.
+        if ((int)value.Language is >= 4 and <= 24) value.Language = LanguageMode.System;
+        else if (!Enum.IsDefined(value.Language)) throw new JsonException(L("InvalidLanguage"));
         // The merged selector uses the region binding. Keep a legacy window-only binding usable.
         if ((!value.Shortcuts.TryGetValue("region", out Keys region) || region == Keys.None)
             && value.Shortcuts.TryGetValue("window", out Keys window) && window != Keys.None && IsSupported(window))

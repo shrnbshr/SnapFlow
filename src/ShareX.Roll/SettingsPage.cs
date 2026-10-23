@@ -23,7 +23,7 @@ internal sealed class SettingsPage : UserControl
     private readonly Label feedback = new() { Name = "settingsFeedback", AutoSize = true, Dock = DockStyle.Fill, Tag = "secondary", Margin = new Padding(0, 10, 0, 8) };
     private readonly Button save = ActionButton("saveSettingsButton", L("SaveReturn"), 124);
     private readonly Button cancel = ActionButton("cancelSettingsButton", L("Cancel"), 76);
-    private readonly Panel scroller = new() { AutoScroll = true, Margin = Padding.Empty };
+    private readonly Panel scroller = new SettingsScrollViewport { AutoScroll = true, Margin = Padding.Empty };
     private readonly SettingsScrollHost scrollHost;
     private readonly TableLayoutPanel content = new() { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, Margin = Padding.Empty };
     private readonly SettingsGroup shortcuts = new();
@@ -46,18 +46,18 @@ internal sealed class SettingsPage : UserControl
         layout.ColumnCount = 1;
         layout.RowCount = 3;
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 76));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.Margin = Padding.Empty;
-        TableLayoutPanel heading = new() { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = Padding.Empty };
+        TableLayoutPanel heading = new() { Dock = DockStyle.Top, AutoSize = true, MinimumSize = new Size(0, 76), ColumnCount = 2, RowCount = 1, Margin = Padding.Empty };
         heading.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         heading.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         FlowLayoutPanel title = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoSize = true, Margin = Padding.Empty };
         title.Controls.Add(new Label { Text = L("Settings"), Font = new Font(Font.FontFamily, 18, FontStyle.Bold), AutoSize = true, Margin = new Padding(0, 0, 0, 5) });
         title.Controls.Add(new Label { Text = L("SettingsSubtitle"), AutoSize = true, Tag = "secondary", Margin = Padding.Empty });
         Button back = ActionButton("backToCaptureButton", L("Back"), 112);
-        if (UiLanguage.UsesEnglishText) { back.Width = 160; save.Width = 160; }
+        title.SizeChanged += (_, _) => WrapLabels(title, title.ClientSize.Width);
         back.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         back.Margin = new Padding(0, 8, 0, 0);
         back.Tag = "quiet";
@@ -98,11 +98,12 @@ internal sealed class SettingsPage : UserControl
             appearance.Controls.Add(option, i, 0);
         }
         Add(appearance);
-        SettingsGroup motionRow = new() { Name = "motionRow", Dock = DockStyle.Top, ColumnCount = 2, RowCount = 1, Height = 62, Padding = new Padding(14, 9, 14, 9), Margin = new Padding(0, 0, 0, 24) };
+        SettingsGroup motionRow = new() { Name = "motionRow", Dock = DockStyle.Top, AutoSize = true, MinimumSize = new Size(0, 62), ColumnCount = 2, RowCount = 1, Padding = new Padding(14, 9, 14, 9), Margin = new Padding(0, 0, 0, 24) };
         motionRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         motionRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        motionRow.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        FlowLayoutPanel motionCaption = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, Margin = Padding.Empty };
+        motionRow.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        FlowLayoutPanel motionCaption = new() { Dock = DockStyle.Fill, AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false, Margin = Padding.Empty };
+        motionRow.SizeChanged += (_, _) => WrapLabels(motionCaption, motionRow.ClientSize.Width - motionRow.Padding.Horizontal - motion.Width);
         motionCaption.Controls.Add(new Label { Text = L("Motion"), AutoSize = true, Margin = Padding.Empty });
         motionCaption.Controls.Add(new Label { Text = L("MotionHint"), AutoSize = true, Tag = "secondary", Font = new Font(Font.FontFamily, 10), Margin = new Padding(0, 2, 0, 0) });
         motion.Checked = draft.AnimationsEnabled;
@@ -117,11 +118,12 @@ internal sealed class SettingsPage : UserControl
         motionRow.Controls.Add(motionCaption, 0, 0);
         motionRow.Controls.Add(motion, 1, 0);
         Add(motionRow);
-        SettingsGroup languageRow = new() { Name = "languageRow", Dock = DockStyle.Top, ColumnCount = 2, RowCount = 1, Height = 62, Padding = new Padding(14, 9, 14, 9), Margin = new Padding(0, 0, 0, 24) };
+        SettingsGroup languageRow = new() { Name = "languageRow", Dock = DockStyle.Top, AutoSize = true, MinimumSize = new Size(0, 62), ColumnCount = 2, RowCount = 1, Padding = new Padding(14, 9, 14, 9), Margin = new Padding(0, 0, 0, 24) };
         languageRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         languageRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        languageRow.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        FlowLayoutPanel languageCaption = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, Margin = Padding.Empty };
+        languageRow.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        FlowLayoutPanel languageCaption = new() { Dock = DockStyle.Fill, AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false, Margin = Padding.Empty };
+        languageRow.SizeChanged += (_, _) => WrapLabels(languageCaption, languageRow.ClientSize.Width - languageRow.Padding.Horizontal - language.Width);
         languageCaption.Controls.Add(new Label { Text = L("Language"), AutoSize = true, Margin = Padding.Empty });
         languageCaption.Controls.Add(new Label { Text = L("LanguageHint"), AutoSize = true, Tag = "secondary", Font = new Font(Font.FontFamily, 10), Margin = new Padding(0, 2, 0, 0) });
         language.Items.AddRange(UiLanguage.Options.Cast<object>().ToArray());
@@ -213,7 +215,6 @@ internal sealed class SettingsPage : UserControl
         actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         actions.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         Button reset = ActionButton("resetSettingsButton", L("Reset"), 100);
-        if (UiLanguage.UsesEnglishText) reset.Width = 148;
         reset.Anchor = AnchorStyles.Left;
         reset.Tag = cancel.Tag = "quiet";
         reset.Click += (_, _) =>
@@ -239,22 +240,31 @@ internal sealed class SettingsPage : UserControl
         VisibleChanged += (_, _) => { if (!Visible) EndScrollingReveal(); };
         RefreshSystemAppearance();
         ShowFeedback(L("SaveHint"));
+        UiLanguage.ApplyTextDirection(this);
         ResumeLayout(true);
         ArrangePage();
     }
 
     private static Button ActionButton(string name, string text, int width) => new()
     {
-        Name = name, Text = text, Size = new Size(width, 36), Margin = Padding.Empty,
+        Name = name, Text = text, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
+        MinimumSize = new Size(width, 36), Padding = new Padding(8, 0, 8, 0), Margin = Padding.Empty,
         Cursor = Cursors.Hand, FlatStyle = FlatStyle.Flat
     };
 
     private Control SectionHeading(string title, string hint)
     {
-        FlowLayoutPanel heading = new() { AutoSize = true, Dock = DockStyle.Top, WrapContents = false, Margin = new Padding(0, 0, 0, 12) };
+        FlowLayoutPanel heading = new() { AutoSize = true, Dock = DockStyle.Top, WrapContents = true, Margin = new Padding(0, 0, 0, 12) };
+        heading.SizeChanged += (_, _) => WrapLabels(heading, heading.ClientSize.Width);
         heading.Controls.Add(new Label { Text = title, AutoSize = true, Font = new Font(Font, FontStyle.Bold), Margin = new Padding(0, 0, 16, 0) });
         heading.Controls.Add(new Label { Text = hint, AutoSize = true, Tag = "secondary", Font = new Font(Font.FontFamily, 10), Margin = new Padding(0, 2, 0, 0) });
         return heading;
+    }
+
+    private static void WrapLabels(Control caption, int width)
+    {
+        foreach (Label label in caption.Controls.OfType<Label>())
+            label.MaximumSize = new Size(Math.Max(1, width - label.Margin.Horizontal), 0);
     }
 
     private SettingsGroup CreateAboutSection()
@@ -549,7 +559,7 @@ internal sealed class ThemeOption : RadioButton
         g.DrawLine(line, mini.X + 25 * s, mini.Y + 19 * s, mini.Right - 6 * s, mini.Y + 19 * s);
         g.DrawLine(line, mini.X + 25 * s, mini.Y + 26 * s, mini.Right - 12 * s, mini.Y + 26 * s);
         TextRenderer.DrawText(g, Text, Font, new Rectangle((int)(84 * s), 0, Width - (int)(100 * s), Height), p.Text,
-            TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
+            TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis | UiLanguage.TextDirection);
     }
 }
 
@@ -628,7 +638,7 @@ internal sealed class ShortcutRecorder : Button
         if (recording || Shortcut == Keys.None)
         {
             TextRenderer.DrawText(g, Text, Font, ClientRectangle, recording ? p.Accent : p.Secondary,
-                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | UiLanguage.TextDirection);
             return;
         }
         string[] keys = Text.Split(" + ");

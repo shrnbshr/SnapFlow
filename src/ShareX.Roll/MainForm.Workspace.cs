@@ -160,6 +160,7 @@ public sealed partial class MainForm
         status.AccessibleName = L("CaptureStatus");
         workspace.Controls.Add(status, 0, 2);
         Controls.Add(workspace);
+        SizeWorkspaceActions();
     }
 
     private void RefreshPreviewToolbar()
@@ -187,11 +188,20 @@ public sealed partial class MainForm
         copy.Text = L("Copy");
         save.Text = L("Save");
         edit.Text = L("Edit");
+        SizeWorkspaceActions();
+        UiLanguage.ApplyTextDirection(this);
         status.AccessibleName = L("CaptureStatus");
         RefreshPreviewToolbar();
         preview.ApplyViewportLanguage();
         preview.Invalidate();
         ResumeLayout(true);
+    }
+
+    private void SizeWorkspaceActions()
+    {
+        foreach (Button button in new[] { settingsButton, edit, copy, save })
+            button.Width = Math.Max((int)((button == settingsButton ? 104 : 82) * DeviceDpi / 96f),
+                TextRenderer.MeasureText(button.Text, button.Font, Size.Empty, TextFormatFlags.NoPadding).Width + (int)(40 * DeviceDpi / 96f));
     }
 }
 

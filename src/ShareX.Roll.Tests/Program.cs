@@ -29,7 +29,8 @@ internal static class Program
         {
             try
             {
-                if (args.Contains("--preview-zoom")) await PreviewZoomRegression.RunAsync(main);
+                if (args.Contains("--settings-scroll-motion")) await SettingsScrollMotionRegression.RunAsync(main, args.Contains("--baseline"), args.Contains("--record-scroll"));
+                else if (args.Contains("--preview-zoom")) await PreviewZoomRegression.RunAsync(main);
                 else if (args.Contains("--settings-live-painting")) await SettingsLivePaintingRegression.RunAsync(main);
                 else if (args.Contains("--settings-polish")) await SettingsPolishRegression.RunAsync(main);
                 else if (args.Contains("--inline-scrolling")) await InlineScrollingRegression.RunAsync(main);

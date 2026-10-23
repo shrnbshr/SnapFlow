@@ -206,7 +206,7 @@ Esc to cancel</value>
     <value>Language</value>
   </data>
   <data xml:space="preserve" name="LanguageHint">
-    <value>Applies on save; missing translations use English</value>
+    <value>Applies on save</value>
   </data>
   <data xml:space="preserve" name="FollowWindows">
     <value>Follow Windows</value>

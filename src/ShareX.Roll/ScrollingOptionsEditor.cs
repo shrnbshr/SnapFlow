@@ -158,7 +158,7 @@ internal sealed class SettingsDisclosure : Button
             g.DrawPath(edge, shape);
         }
         TextRenderer.DrawText(g, Text, Font, new Rectangle((int)(2 * s), 0, Math.Max(0, Width - (int)(32 * s)), Height), Palette.Text,
-            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine);
+            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | UiLanguage.TextDirection);
         float x = Width - 14 * s, y = Height / 2f;
         using Pen chevron = new(Palette.Secondary, 1.7f * s) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
         g.TranslateTransform(x, y);

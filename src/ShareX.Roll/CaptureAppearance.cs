@@ -179,11 +179,11 @@ internal static class CaptureButtonPainter
             EditorIcons.Draw(g, new Rectangle(left, (button.Height - iconSize) / 2, iconSize, iconSize), null, icon, ink);
             TextRenderer.DrawText(g, button.Text, button.Font,
                 new Rectangle(left + iconSize + gap, 0, Math.Max(0, width - iconSize - gap), button.Height), ink,
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine | UiLanguage.TextDirection);
             return;
         }
         TextRenderer.DrawText(g, button.Text, button.Font, button.ClientRectangle, ink,
-            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | UiLanguage.TextDirection);
     }
 }
 
@@ -307,9 +307,9 @@ internal sealed class CaptureModeButton : Button
         CaptureDrawing.Icon(g, Kind, new RectangleF(16 * s, cy - 11 * s, 22 * s, 22 * s), iconInk);
         using Font title = new(Font.FontFamily, 11, FontStyle.Bold);
         using Font shortcut = new("Segoe UI", 10);
-        TextRenderer.DrawText(g, Text, title, new Rectangle((int)(52 * s), (int)(cy - 22 * s), Width - (int)(60 * s), (int)(26 * s)),
-            ink, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
-        TextRenderer.DrawText(g, Shortcut.Replace(" + ", "+"), shortcut, new Rectangle((int)(52 * s), (int)(cy + 3 * s), Width - (int)(60 * s), (int)(22 * s)),
+        TextRenderer.DrawText(g, Text, title, new Rectangle((int)(52 * s), (int)(cy - 26 * s), Width - (int)(60 * s), (int)(36 * s)),
+            ink, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.WordBreak | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | UiLanguage.TextDirection);
+        TextRenderer.DrawText(g, Shortcut.Replace(" + ", "+"), shortcut, new Rectangle((int)(52 * s), (int)(cy + 10 * s), Width - (int)(60 * s), (int)(22 * s)),
             secondary, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
     }
 }
@@ -425,9 +425,9 @@ internal sealed partial class PreviewCanvas : PictureBox
         using Font title = new(Font.FontFamily, compact ? 13 : 15, FontStyle.Bold);
         using Font hint = new(Font.FontFamily, 10.5f);
         TextRenderer.DrawText(g, L("NoScreenshot"), title, new Rectangle(0, (int)(y + 54 * s), Width, (int)(32 * s)), p.Text,
-            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | UiLanguage.TextDirection);
         TextRenderer.DrawText(g, L("ChooseCapture"), hint, new Rectangle(0, (int)(y + 90 * s), Width, (int)(28 * s)), p.Secondary,
-            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | UiLanguage.TextDirection);
     }
 
     private void EndReveal()

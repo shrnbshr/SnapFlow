@@ -293,7 +293,7 @@ internal static class PreviewZoomRegression
             Bitmap replacement = new(300, 200); Call(main, "SetPreview", replacement);
             Check(!preview.IsWidthReading && !preview.IsViewportAnimating && Math.Abs(preview.ZoomFactor - Math.Min((double)preview.Width / 300, (double)preview.Height / 200)) < .000001,
                 "next capture resets reading and zoom state");
-            foreach (string culture in new[] { "en", "zh-CN", "zh-TW" })
+            foreach (string culture in new[] { "en", "zh-CN", "zh-HK" })
             foreach (string key in new[] { "PreviewZoomControls", "PreviewZoomIn", "PreviewZoomOut", "PreviewFitWidth", "PreviewFitImage", "PreviewReadingHelp" })
                 Check(!string.IsNullOrWhiteSpace(Strings.ResourceManager.GetString(key, System.Globalization.CultureInfo.GetCultureInfo(culture))), culture + " " + key + " is translated");
         }

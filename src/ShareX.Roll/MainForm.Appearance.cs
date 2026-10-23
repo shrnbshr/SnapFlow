@@ -31,6 +31,7 @@ public sealed partial class MainForm
         };
         UiMotion.UserEnabled = preferences.AnimationsEnabled;
         InitializeWorkspaceLayout();
+        UiLanguage.ApplyTextDirection(this);
         VisibleChanged += (_, _) => { if (!Visible) EndPageTransition(); };
         copy.EnabledChanged += (_, _) => RefreshPreviewToolbar();
         ApplyAppearance();

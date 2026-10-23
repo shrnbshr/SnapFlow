@@ -23,6 +23,7 @@ internal static class EditorChrome
         Panel header = new() { Name = "editorHeader", Bounds = new(0, 0, window.Width, S(62)) };
         Label title = new() { Text = L("Edit"), AutoSize = false, Bounds = new(S(20), S(10), S(230), S(23)) };
         Label status = new() { Name = "editorStatus", AutoEllipsis = true, Bounds = new(S(20), S(35), S(280), S(21)) };
+        Font? titleFont = null, statusFont = null;
         ToolStripEx actions = new()
         {
             Name = "editorActions", AutoSize = false, Dock = DockStyle.None, ClickThrough = true,
@@ -152,8 +153,11 @@ internal static class EditorChrome
             title.BackColor = status.BackColor = palette.Surface;
             window.ForeColor = title.ForeColor = tools.ForeColor = actions.ForeColor = palette.Text;
             status.ForeColor = palette.Secondary;
-            title.Font = new Font(editor.Font.FontFamily, 11, FontStyle.Bold);
-            status.Font = new Font(editor.Font.FontFamily, 9);
+            Font? oldTitleFont = titleFont, oldStatusFont = statusFont;
+            title.Font = titleFont = new Font(editor.Font.FontFamily, 11, FontStyle.Bold);
+            status.Font = statusFont = new Font(editor.Font.FontFamily, 9);
+            oldTitleFont?.Dispose();
+            oldStatusFont?.Dispose();
             foreach (ToolStrip strip in new[] { tools, actions })
             {
                 strip.Font = editor.Font;
@@ -174,13 +178,15 @@ internal static class EditorChrome
             }
             tools.Paint += (_, e) => { using Pen line = new(palette.Border); e.Graphics.DrawLine(line, 0, 0, tools.Width, 0); };
             RefreshState();
+            UiLanguage.ApplyTextDirection(window);
             LayoutChrome();
         }
         // The library applies its theme immediately before showing the owned toolbar window.
         window.Shown += (_, _) => Style();
         editor.Shown += (_, _) => LayoutChrome();
         editor.Resize += (_, _) => LayoutChrome();
-        window.Disposed += (_, _) => { title.Font.Dispose(); status.Font.Dispose(); };
+        // Child disposal can reset Control.Font to a shared default. Dispose only fonts we own.
+        window.Disposed += (_, _) => { titleFont?.Dispose(); statusFont?.Dispose(); };
     }
 }
 
@@ -270,6 +276,7 @@ internal sealed class EditorToolStripRenderer : ToolStripProfessionalRenderer
     protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
     {
         e.TextColor = Foreground(e.Item);
+        e.TextFormat |= UiLanguage.TextDirection;
         base.OnRenderItemText(e);
     }
     protected override void OnRenderItemImage(ToolStripItemImageRenderEventArgs e)

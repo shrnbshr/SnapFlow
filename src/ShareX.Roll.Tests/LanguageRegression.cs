@@ -4,6 +4,8 @@ using System.Globalization;
 using System.IO;
 using System.Reflection;
 using System.Drawing.Imaging;
+using System.Collections;
+using System.Resources;
 
 internal static class LanguageRegression
 {
@@ -28,14 +30,41 @@ internal static class LanguageRegression
         Size initialSize = main.Size;
         try
         {
+            // Do not accept a non-empty English fallback as a completed translation.
+            ResourceSet englishResources = Strings.ResourceManager.GetResourceSet(CultureInfo.InvariantCulture, true, false)!;
+            foreach (LanguageOption option in UiLanguage.Options.Where(option => option.Mode != LanguageMode.System))
+            {
+                CultureInfo culture = CultureInfo.GetCultureInfo(option.CultureName);
+                ResourceSet? localized = Strings.ResourceManager.GetResourceSet(option.Mode == LanguageMode.English ? CultureInfo.InvariantCulture : culture, true, false);
+                Check(localized != null, "dedicated main-window resource catalog: " + culture.Name);
+                foreach (DictionaryEntry entry in englishResources)
+                {
+                    string key = (string)entry.Key;
+                    string? value = localized!.GetString(key);
+                    if (string.IsNullOrWhiteSpace(value)) throw new InvalidOperationException("Missing direct translation: " + culture.Name + "/" + key);
+                    if (value.Contains('{')) _ = string.Format(culture, value, 123, 456);
+                }
+                Check(localized!.Cast<DictionaryEntry>().Count() == englishResources.Cast<DictionaryEntry>().Count(), "all main-window strings present without fallback: " + culture.Name);
+            }
             foreach ((string input, string expected) in new[] { ("zh-CN","zh-CN"), ("zh-SG","zh-CN"), ("zh-Hans","zh-CN"),
-                ("zh-TW","zh-TW"), ("zh-HK","zh-TW"), ("zh-MO","zh-TW"), ("zh-Hant","zh-TW"), ("en-US","en"), ("fr-FR","fr"), ("ja-JP","ja-JP"),
-                ("de-AT","de"), ("es-MX","es-MX"), ("fr-CA","fr"), ("pt-AO","pt-PT"), ("ar-SA","ar-YE"), ("th-TH","en") })
+                ("zh-TW","zh-HK"), ("zh-HK","zh-HK"), ("zh-MO","zh-HK"), ("zh-Hant","zh-HK"), ("en-US","en"), ("fr-FR","en"), ("ja-JP","en"),
+                ("de-AT","en"), ("es-MX","en"), ("fr-CA","en"), ("pt-AO","en"), ("ar-SA","en"), ("th-TH","en") })
                 Check(UiLanguage.Resolve(LanguageMode.System, CultureInfo.GetCultureInfo(input)).Name == expected, "Windows language mapping: " + input + " → " + expected);
             Check(UiLanguage.Resolve(LanguageMode.English, CultureInfo.GetCultureInfo("zh-CN")).Name == "en", "manual English overrides Chinese Windows");
-            Check(UiLanguage.Resolve(LanguageMode.TraditionalChinese, CultureInfo.GetCultureInfo("en-US")).Name == "zh-TW", "manual traditional Chinese overrides English Windows");
+            Check(UiLanguage.Resolve(LanguageMode.TraditionalChinese, CultureInfo.GetCultureInfo("en-US")).Name == "zh-HK", "manual Hong Kong Traditional Chinese overrides English Windows");
+            Check(UiLanguage.Options.Single(option => option.Mode == LanguageMode.TraditionalChinese).ToString() == "繁體中文（香港）", "traditional Chinese choice identifies Hong Kong");
             File.WriteAllText(path, "{\"Appearance\":0,\"Shortcuts\":{}}");
             Check(ApplicationPreferences.Load(path).Language == LanguageMode.System, "legacy preferences default to following Windows");
+            foreach (int retired in Enumerable.Range(4, 21))
+            {
+                ApplicationPreferences legacy = original.Clone();
+                legacy.Language = (LanguageMode)retired;
+                legacy.Save(path);
+                ApplicationPreferences migrated = ApplicationPreferences.Load(path);
+                Check(migrated.Language == LanguageMode.System && migrated.Appearance == legacy.Appearance &&
+                    migrated.AnimationsEnabled == legacy.AnimationsEnabled && legacy.Shortcuts.All(pair => migrated.Shortcuts[pair.Key] == pair.Value),
+                    "retired language migrates without losing preferences: " + retired);
+            }
             ApplicationPreferences draft = original.Clone();
             draft.Language = LanguageMode.SimplifiedChinese;
             foreach (string kind in draft.Shortcuts.Keys.ToArray()) draft.Shortcuts[kind] = Keys.None;
@@ -44,11 +73,11 @@ internal static class LanguageRegression
             UiLanguage.Apply(draft.Language);
             Call(main, "ApplyWorkspaceLanguage");
 
-            foreach (LanguageMode mode in new[] { LanguageMode.English, LanguageMode.TraditionalChinese, LanguageMode.SimplifiedChinese, LanguageMode.Japanese, LanguageMode.French })
+            foreach (LanguageMode mode in UiLanguage.Options.Where(option => option.Mode != LanguageMode.System).Select(option => option.Mode))
             {
                 Find<Button>(main, "settingsButton").PerformClick();
                 ComboBox languages = Find<ComboBox>(main, "languageSelector");
-                Check(languages.Items.Count == 25, "language selector offers Windows plus all 24 available languages");
+                Check(languages.Items.Count == 4, "language selector offers Windows plus Chinese, Hong Kong Traditional Chinese and English only");
                 LanguageMode previous = Field<ApplicationPreferences>(main, "preferences").Language;
                 languages.SelectedIndex = (int)mode;
                 Check(Field<ApplicationPreferences>(main, "preferences").Language == previous, "selection remains a draft until saved");
@@ -65,6 +94,13 @@ internal static class LanguageRegression
                 Find<Button>(main, "settingsButton").PerformClick();
                 Check(Find<Button>(main, "saveSettingsButton").Text == UiText.L("SaveReturn"), "settings uses the selected language: " + mode);
                 Check(Find<ComboBox>(main, "languageSelector").SelectedIndex == (int)mode, "reopened selector retains the saved choice");
+                Find<Button>(main, "scrollingOptionsButton").PerformClick();
+                await Task.Delay(260);
+                Control scrolling = Find<Control>(main, "scrollingOptionsEditor");
+                Check(scrolling.Visible && Find<CheckBox>(scrolling, "cbAutoUpload").AccessibleName == UiText.L("ScrollAutoSave"),
+                    "inline scrolling options use the selected language: " + mode);
+                Find<Button>(main, "scrollingOptionsButton").PerformClick();
+                await Task.Delay(260);
                 using (Bitmap bitmap = new(main.Width, main.Height))
                 {
                     main.DrawToBitmap(bitmap, new Rectangle(Point.Empty, main.Size));
@@ -80,6 +116,23 @@ internal static class LanguageRegression
                 Control origin = Find<Control>(page, "aboutOrigin");
                 Check(origin.Height >= origin.GetPreferredSize(new Size(origin.Width, 0)).Height,
                     "origin description is fully laid out: " + mode);
+                foreach (string buttonName in new[] { "saveSettingsButton", "cancelSettingsButton", "resetSettingsButton", "backToCaptureButton" })
+                {
+                    Button button = Find<Button>(page, buttonName);
+                    Check(button.Width >= TextRenderer.MeasureText(button.Text, button.Font, Size.Empty, TextFormatFlags.SingleLine).Width,
+                        "translated button text fits: " + mode + "/" + buttonName);
+                }
+                Check(Find<Button>(page, "saveSettingsButton").RectangleToScreen(Find<Button>(page, "saveSettingsButton").ClientRectangle).Right <= main.RectangleToScreen(main.ClientRectangle).Right,
+                    "translated footer stays inside minimum window: " + mode);
+                foreach (string rowName in new[] { "motionRow", "languageRow" })
+                {
+                    Control row = Find<Control>(page, rowName);
+                    Control caption = row.Controls[0];
+                    Check(caption.Controls.OfType<Label>().All(label => label.Bottom <= caption.ClientSize.Height),
+                        "translated captions wrap without vertical clipping: " + mode + "/" + rowName);
+                }
+                Check(origin.RightToLeft == (UiLanguage.Culture.TextInfo.IsRightToLeft ? RightToLeft.Yes : RightToLeft.No),
+                    "text direction follows language: " + mode);
                 using (Bitmap bitmap = new(main.Width, main.Height))
                 {
                     main.DrawToBitmap(bitmap, new Rectangle(Point.Empty, main.Size));
@@ -90,6 +143,16 @@ internal static class LanguageRegression
                 Find<Button>(main, "backToCaptureButton").PerformClick();
                 Check(ApplicationPreferences.Load(path).Language == mode && UiLanguage.Culture.Name == UiLanguage.Resolve(mode, CultureInfo.GetCultureInfo("en-US")).Name,
                     "cancel discards the language draft: " + mode);
+                using Bitmap source = new(300, 200);
+                using ShareX.ScreenCaptureLib.RegionCaptureForm editor = ScreenshotEditor.Create(source, CapturePalette.Light);
+                editor.Show(main);
+                await Task.Delay(160);
+                ToolStrip actions = EditorRegression.Actions(editor);
+                Check(actions.Items["editorApply"]!.Text == UiText.L("ApplyPreview") && actions.Items["editorSaveAs"]!.Text == UiText.L("ExportImage"),
+                    "editor output actions use the selected language: " + mode);
+                Check(actions.Items["editorApply"]!.Width >= TextRenderer.MeasureText(UiText.L("ApplyPreview"), actions.Font).Width,
+                    "editor apply action fits translated text: " + mode);
+                editor.Close();
             }
             ApplicationPreferences english = ApplicationPreferences.Load(path);
             english.Language = LanguageMode.English;
@@ -109,9 +172,12 @@ internal static class LanguageRegression
                 using ShareX.ScreenCaptureLib.ScrollingCaptureForm native = (ShareX.ScreenCaptureLib.ScrollingCaptureForm)Activator.CreateInstance(
                     typeof(ShareX.ScreenCaptureLib.ScrollingCaptureForm), BindingFlags.Instance | BindingFlags.NonPublic, null,
                     new object[] { new ShareX.ScreenCaptureLib.ScrollingCaptureOptions() }, null)!;
-                string expected = new System.ComponentModel.ComponentResourceManager(native.GetType()).GetString("btnCapture.Text", UiLanguage.Culture)!;
+                var nativeResources = new System.ComponentModel.ComponentResourceManager(native.GetType());
+                Check(nativeResources.GetResourceSet(option.Mode == LanguageMode.English ? CultureInfo.InvariantCulture : UiLanguage.Culture, true, false) != null,
+                    "dedicated capture resource catalog without fallback: " + option.CultureName);
+                string expected = nativeResources.GetString("btnCapture.Text", UiLanguage.Culture)!;
                 Check(Find<Button>(native,"btnCapture").Text == expected, "existing capture resource selected: " + option.CultureName);
-                Check(!string.IsNullOrWhiteSpace(UiText.L("Settings")), "main-window resource or English fallback: " + option.CultureName);
+                Check(!string.IsNullOrWhiteSpace(UiText.L("Settings")), "localized main-window resource selected: " + option.CultureName);
             }
             UiLanguage.Apply(Field<ApplicationPreferences>(main,"preferences").Language);
 

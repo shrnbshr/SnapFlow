@@ -492,15 +492,16 @@ internal sealed class PreviewZoomBar : Panel
         float scale = viewport.DeviceDpi / 96f;
         int D(int value) => (int)Math.Round(value * scale);
         // The 32px targets stay usable in the minimum-width preview at 96–200% DPI.
-        int[] widths = [32, 66, 32, 84];
-        Size = new Size(D(230), D(44));
+        int fitWidth = Math.Max(D(84), TextRenderer.MeasureText(width.Text, width.Font).Width + D(12));
+        int[] widths = [D(32), D(66), D(32), fitWidth];
+        Size = new Size(widths.Sum() + D(16), D(44));
         Location = new Point(Math.Max(0, viewport.Width - Width - D(28)), Math.Max(0, viewport.Height - Height - D(12)));
         int x = D(6);
         Button[] buttons = [minus, percent, plus, width];
         for (int i = 0; i < buttons.Length; i++)
         {
-            buttons[i].Bounds = new Rectangle(x, D(6), D(widths[i]), D(32));
-            x += D(widths[i]) + (i == 2 ? D(4) : 0);
+            buttons[i].Bounds = new Rectangle(x, D(6), widths[i], D(32));
+            x += widths[i] + (i == 2 ? D(4) : 0);
         }
         using GraphicsPath path = CaptureDrawing.Rounded(new RectangleF(0, 0, Width, Height), D(14));
         Region? old = Region; Region = new Region(path); old?.Dispose();
@@ -528,6 +529,8 @@ internal sealed class PreviewZoomBar : Panel
         tips.SetToolTip(percent, L("PreviewFitImage") + " (0)");
         tips.SetToolTip(width, L(reading ? "PreviewZoomHelp" : "PreviewReadingHelp"));
         tips.SetToolTip(this, L(reading ? "PreviewReadingHelp" : "PreviewZoomHelp"));
+        UiLanguage.ApplyTextDirection(this);
+        Arrange();
     }
 
     internal void UpdateValues(double factor, bool canShrink, bool canGrow, bool isReading)

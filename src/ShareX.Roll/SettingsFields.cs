@@ -274,7 +274,7 @@ internal sealed class SettingsChoice : ComboBox
         g.FillPath(fill, shape);
         g.DrawPath(edge, shape);
         TextRenderer.DrawText(g, Text, Font, new Rectangle((int)(10 * s), 0, Math.Max(0, Width - (int)(36 * s)), Height), Enabled ? palette.Text : palette.Secondary,
-            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.PreserveGraphicsClipping | TextFormatFlags.PreserveGraphicsTranslateTransform);
+            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.PreserveGraphicsClipping | TextFormatFlags.PreserveGraphicsTranslateTransform | UiLanguage.TextDirection);
         float x = Width - 15 * s, y = Height / 2f;
         using Pen arrow = new(palette.Secondary, 1.5f * s) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
         g.DrawLines(arrow, new PointF[] { new(x - 3 * s, y - 1.5f * s), new(x, y + 1.5f * s), new(x + 3 * s, y - 1.5f * s) });
@@ -313,7 +313,10 @@ internal sealed class SettingsChoice : ComboBox
             {
                 Checked = index == SelectedIndex, ForeColor = palette.Text, BackColor = palette.Surface,
                 AutoSize = false, Size = new Size(Math.Max(Width, DropDownWidth) - 12, (int)(32 * DeviceDpi / 96f)),
-                AccessibleName = GetItemText(Items[index])
+                AccessibleName = GetItemText(Items[index]),
+                RightToLeft = (Items[index] is LanguageOption { Mode: not LanguageMode.System } option
+                    ? System.Globalization.CultureInfo.GetCultureInfo(option.CultureName).TextInfo.IsRightToLeft
+                    : UiLanguage.Culture.TextInfo.IsRightToLeft) ? RightToLeft.Yes : RightToLeft.No
             };
             item.Click += (_, _) => { SelectedIndex = captured; Focus(); };
             popup.Items.Add(item);

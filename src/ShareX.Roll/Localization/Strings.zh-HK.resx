@@ -1,0 +1,280 @@
+<?xml version='1.0' encoding='utf-8'?>
+<root>
+  <data xml:space="preserve" name="ScrollAutoSave">
+    <value>完成後開啟儲存視窗</value>
+  </data>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <data xml:space="preserve" name="Settings">
+    <value>設定</value>
+  </data>
+  <data xml:space="preserve" name="Region">
+    <value>區域/視窗截圖</value>
+  </data>
+  <data xml:space="preserve" name="Window">
+    <value>視窗截圖</value>
+  </data>
+  <data xml:space="preserve" name="Full">
+    <value>全螢幕截圖</value>
+  </data>
+  <data xml:space="preserve" name="Scroll">
+    <value>捲動截圖</value>
+  </data>
+  <data xml:space="preserve" name="EmptySettings">
+    <value>設定檔為空</value>
+  </data>
+  <data xml:space="preserve" name="InvalidSettings">
+    <value>設定格式無效</value>
+  </data>
+  <data xml:space="preserve" name="InvalidShortcutSuffix">
+    <value>快捷鍵無效</value>
+  </data>
+  <data xml:space="preserve" name="ScrollHelp">
+    <value>捲動截圖說明</value>
+  </data>
+  <data xml:space="preserve" name="ImagePreview">
+    <value>截圖預覽</value>
+  </data>
+  <data xml:space="preserve" name="NoScreenshot">
+    <value>尚無截圖</value>
+  </data>
+  <data xml:space="preserve" name="ChooseCapture">
+    <value>從左側選擇截圖方式</value>
+  </data>
+  <data xml:space="preserve" name="CopyImage">
+    <value>複製圖片</value>
+  </data>
+  <data xml:space="preserve" name="SaveAs">
+    <value>另存為…</value>
+  </data>
+  <data xml:space="preserve" name="CaptureFailed">
+    <value>截圖失敗：</value>
+  </data>
+  <data xml:space="preserve" name="ScrollTitle">
+    <value>SnapFlow - 捲動截圖</value>
+  </data>
+  <data xml:space="preserve" name="SingleScreenTitle">
+    <value>SnapFlow - 未偵測到捲動，僅擷取一個畫面</value>
+  </data>
+  <data xml:space="preserve" name="SaveImage">
+    <value>儲存圖片</value>
+  </data>
+  <data xml:space="preserve" name="OptionsReadFailed">
+    <value>無法讀取設定，使用預設值：</value>
+  </data>
+  <data xml:space="preserve" name="OptionsSaveFailed">
+    <value>無法儲存設定：</value>
+  </data>
+  <data xml:space="preserve" name="PreferencesReadFailed">
+    <value>無法讀取應用程式設定，暫用預設值。可在「設定」中重新儲存：</value>
+  </data>
+  <data xml:space="preserve" name="StartHint">
+    <value>選擇左側的截圖方式以開始</value>
+  </data>
+  <data xml:space="preserve" name="ShortcutConflictSuffix">
+    <value>快捷鍵被占用或無法註冊，請開啟右上角「設定」變更。仍可點選截圖按鈕。</value>
+  </data>
+  <data xml:space="preserve" name="InvalidShortcutError">
+    <value>：無效的快捷鍵</value>
+  </data>
+  <data xml:space="preserve" name="DuplicateShortcutError">
+    <value>：使用了相同快捷鍵</value>
+  </data>
+  <data xml:space="preserve" name="SavePreferencesFailed">
+    <value>無法儲存設定，原設定仍然有效：</value>
+  </data>
+  <data xml:space="preserve" name="NoShortcut">
+    <value>未設定快捷鍵</value>
+  </data>
+  <data xml:space="preserve" name="ShortcutUnavailable">
+    <value>快捷鍵已占用 · 前往設定</value>
+  </data>
+  <data xml:space="preserve" name="CaptureTip">
+    <value>拖曳框選或按一下視窗
+按 Esc 取消</value>
+  </data>
+  <data xml:space="preserve" name="SettingsDescription">
+    <value>變更快捷鍵、外觀與介面動畫，也可按 Ctrl + 逗號開啟</value>
+  </data>
+  <data xml:space="preserve" name="NewCapture">
+    <value>新增截圖</value>
+  </data>
+  <data xml:space="preserve" name="Preview">
+    <value>預覽</value>
+  </data>
+  <data xml:space="preserve" name="Waiting">
+    <value>等待截圖</value>
+  </data>
+  <data xml:space="preserve" name="Copy">
+    <value>複製</value>
+  </data>
+  <data xml:space="preserve" name="Save">
+    <value>儲存…</value>
+  </data>
+  <data xml:space="preserve" name="CaptureStatus">
+    <value>截圖狀態與快捷鍵註冊結果</value>
+  </data>
+  <data xml:space="preserve" name="SaveReturn">
+    <value>儲存並返回</value>
+  </data>
+  <data xml:space="preserve" name="Cancel">
+    <value>取消</value>
+  </data>
+  <data xml:space="preserve" name="Motion">
+    <value>介面動畫</value>
+  </data>
+  <data xml:space="preserve" name="SettingsSubtitle">
+    <value>快捷鍵、外觀與語言</value>
+  </data>
+  <data xml:space="preserve" name="Back">
+    <value>‹  返回截圖</value>
+  </data>
+  <data xml:space="preserve" name="Appearance">
+    <value>外觀</value>
+  </data>
+  <data xml:space="preserve" name="AppearanceHint">
+    <value>可跟隨系統自動切換</value>
+  </data>
+  <data xml:space="preserve" name="SystemTheme">
+    <value>跟隨系統</value>
+  </data>
+  <data xml:space="preserve" name="Light">
+    <value>淺色</value>
+  </data>
+  <data xml:space="preserve" name="Dark">
+    <value>深色</value>
+  </data>
+  <data xml:space="preserve" name="AppearanceSuffix">
+    <value>外觀</value>
+  </data>
+  <data xml:space="preserve" name="AppearancePreview">
+    <value>已預覽外觀，儲存後生效。返回將放棄未儲存的變更。</value>
+  </data>
+  <data xml:space="preserve" name="MotionHint">
+    <value>頁面切換與操作回饋，遵循系統動畫設定</value>
+  </data>
+  <data xml:space="preserve" name="MotionPreview">
+    <value>已預覽動畫設定，儲存後生效。</value>
+  </data>
+  <data xml:space="preserve" name="Shortcuts">
+    <value>截圖快捷鍵</value>
+  </data>
+  <data xml:space="preserve" name="ShortcutsHint">
+    <value>點選右側按鍵即可變更</value>
+  </data>
+  <data xml:space="preserve" name="ShortcutSuffix">
+    <value>快捷鍵</value>
+  </data>
+  <data xml:space="preserve" name="Unsaved">
+    <value>有未儲存的變更。返回將放棄這些變更。</value>
+  </data>
+  <data xml:space="preserve" name="ClearPrefix">
+    <value>清除</value>
+  </data>
+  <data xml:space="preserve" name="DisableDescription">
+    <value>停用此快捷鍵，仍可點選截圖按鈕</value>
+  </data>
+  <data xml:space="preserve" name="SupportedKeys">
+    <value>支援 Ctrl / Alt 組合鍵、F1–F24、Print Screen；Esc 取消輸入。</value>
+  </data>
+  <data xml:space="preserve" name="Reset">
+    <value>恢復預設</value>
+  </data>
+  <data xml:space="preserve" name="ResetFeedback">
+    <value>已恢復預設，儲存後生效。</value>
+  </data>
+  <data xml:space="preserve" name="SaveHint">
+    <value>儲存時會檢查快捷鍵占用情況。</value>
+  </data>
+  <data xml:space="preserve" name="NotSaved">
+    <value>未儲存：</value>
+  </data>
+  <data xml:space="preserve" name="Unset">
+    <value>未設定</value>
+  </data>
+  <data xml:space="preserve" name="RecorderDescription">
+    <value>；點選後按新的快捷鍵</value>
+  </data>
+  <data xml:space="preserve" name="PressShortcut">
+    <value>按下組合鍵…</value>
+  </data>
+  <data xml:space="preserve" name="Language">
+    <value>語言</value>
+  </data>
+  <data xml:space="preserve" name="LanguageHint">
+    <value>儲存後生效</value>
+  </data>
+  <data xml:space="preserve" name="FollowWindows">
+    <value>跟隨 Windows</value>
+  </data>
+  <data xml:space="preserve" name="LanguageFeedback">
+    <value>語言將在儲存並返回後切換。</value>
+  </data>
+  <data xml:space="preserve" name="InvalidLanguage">
+    <value>語言設定無效</value>
+  </data>
+  <data xml:space="preserve" name="Pixels">
+    <value>{0} × {1} 像素</value>
+  </data>
+  <data xml:space="preserve" name="ShortcutTaken">
+    <value>{0}：{1} 已被占用或系統不允許，請變更</value>
+  </data>
+  <data xml:space="preserve" name="ScreenshotFile">
+    <value>截圖_{0}.png</value>
+  </data>
+  <data name="ListSeparator" xml:space="preserve">
+    <value>、</value>
+  </data>
+  <data xml:space="preserve" name="Edit"><value>編輯</value></data>
+  <data xml:space="preserve" name="ApplyPreview"><value>套用至預覽</value></data>
+  <data xml:space="preserve" name="ExportImage"><value>匯出圖片…</value></data>
+  <data xml:space="preserve" name="EditorFailed"><value>編輯圖片失敗：</value></data>
+  <data xml:space="preserve" name="CropImage"><value>裁切</value></data>
+  <data xml:space="preserve" name="EditorTools"><value>標註工具</value></data>
+  <data xml:space="preserve" name="EditorActions"><value>圖片操作</value></data>
+  <data xml:space="preserve" name="ConfirmCrop"><value>確認裁切</value></data>
+  <data xml:space="preserve" name="CropEdgesHint"><value>拖動邊界調整 · Enter 確認 · Esc 取消</value></data>
+  <data name="About" xml:space="preserve"><value>關於軟件</value></data>
+  <data name="AboutPurpose" xml:space="preserve"><value>本機截圖與捲動長截圖</value></data>
+  <data name="AboutOrigin" xml:space="preserve"><value>基於 ShareX 21.0.0 的非官方衍生版本，重用並修改其截圖與圖像編輯程式碼。</value></data>
+  <data name="AboutLicense" xml:space="preserve"><value>開源授權：GNU GPL v3 或更新版本。</value></data>
+  <data name="AboutRepository" xml:space="preserve"><value>程式碼儲存庫</value></data>
+  <data name="AboutGitHubAccount" xml:space="preserve"><value>GitHub 帳戶</value></data>
+  <data name="AboutUpstream" xml:space="preserve"><value>上游項目 ↗</value></data>
+  <data name="AboutLicenseLink" xml:space="preserve"><value>檢視授權條款</value></data>
+  <data name="AboutNoticeLink" xml:space="preserve"><value>修改記錄</value></data>
+  <data name="OpenReferenceFailed" xml:space="preserve"><value>無法開啟：{0}</value></data>
+  <data xml:space="preserve" name="AnnotationColor"><value>顏色</value></data>
+  <data xml:space="preserve" name="AnnotationCustomColor"><value>自訂顏色…</value></data>
+  <data xml:space="preserve" name="AnnotationFill"><value>填滿</value></data>
+  <data xml:space="preserve" name="EditorMoreTools"><value>更多工具</value></data>
+  <data xml:space="preserve" name="AnnotationDeleteHint"><value>在標註上按一下滑鼠右鍵，即可刪除。</value></data>
+  <data xml:space="preserve" name="PreviewZoomControls">
+    <value>圖片縮放</value>
+  </data>
+  <data xml:space="preserve" name="PreviewZoomOut">
+    <value>縮小</value>
+  </data>
+  <data xml:space="preserve" name="PreviewZoomIn">
+    <value>放大</value>
+  </data>
+  <data xml:space="preserve" name="PreviewZoomScale">
+    <value>縮放比例</value>
+  </data>
+  <data xml:space="preserve" name="PreviewFitImage">
+    <value>適合視窗</value>
+  </data>
+  <data xml:space="preserve" name="PreviewFitWidth">
+    <value>適合寬度</value>
+  </data>
+  <data xml:space="preserve" name="PreviewZoomHelp">
+    <value>滾輪縮放 · 拖曳查看 · 按 0 適合視窗</value>
+  </data>
+  <data xml:space="preserve" name="PreviewReadingHelp">
+    <value>滾輪上下閱讀 · Ctrl＋滾輪縮放 · Page Up/Down 翻頁</value>
+  </data>
+</root>

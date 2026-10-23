@@ -195,9 +195,10 @@ internal static class SettingsRegression
             SettingsPage compactPage = Find<SettingsPage>(main, "SettingsPage");
             await Task.Delay(100);
             Panel scroller = Field<Panel>(compactPage, "scroller");
-            scroller.AutoScrollPosition = new Point(0, Field<TableLayoutPanel>(compactPage, "content").Height);
-            await Task.Delay(80);
             ShortcutRecorder last = Find<ShortcutRecorder>(compactPage, "scrollShortcut");
+            // The About section follows shortcuts; the very bottom no longer shows this recorder.
+            scroller.ScrollControlIntoView(last);
+            await Task.Delay(80);
             Check(scroller.RectangleToScreen(scroller.ClientRectangle).Contains(last.RectangleToScreen(last.ClientRectangle)),
                 "last shortcut is reachable by scrolling at minimum window size");
             Check(Find<Button>(compactPage, "saveSettingsButton").RectangleToScreen(Find<Button>(compactPage, "saveSettingsButton").ClientRectangle).Bottom

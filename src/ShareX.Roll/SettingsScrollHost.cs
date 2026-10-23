@@ -1,5 +1,6 @@
 // GPL-3.0-or-later. Settings presentation; WinForms still owns scrolling and focus navigation.
 using System.Drawing.Drawing2D;
+using System.Diagnostics;
 using static ShareX.Roll.Localization.UiText;
 
 namespace ShareX.Roll;
@@ -9,24 +10,150 @@ internal sealed class SettingsScrollHost : Panel
     private readonly Panel clip = new() { Margin = Padding.Empty, TabStop = false };
     private readonly Panel viewport;
     private readonly SettingsScrollBar bar;
+    private readonly System.Windows.Forms.Timer motion = new() { Interval = 15 };
+    private readonly Stopwatch clock = new();
+    private readonly HashSet<Control> observed = new();
+    private double position, target, lastSample;
+    private int lastWritten, lastMaximum;
+    private bool applying;
     private bool arranging;
+    internal bool IsScrolling => motion.Enabled;
+    internal long ScrollUpdateTicks { get; private set; }
+    internal long MaximumScrollUpdateTicks { get; private set; }
+    internal int ScrollUpdates { get; private set; }
+    private int Offset => -viewport.AutoScrollPosition.Y;
+    private int Maximum => Math.Max(0, viewport.DisplayRectangle.Height - viewport.ClientSize.Height);
 
     internal SettingsScrollHost(Panel viewport)
     {
         this.viewport = viewport;
         Name = "settingsScrollHost";
         TabStop = false;
-        bar = new SettingsScrollBar(viewport) { Name = "settingsScrollBar", AccessibleName = L("Settings") };
+        bar = new SettingsScrollBar(this) { Name = "settingsScrollBar", AccessibleName = L("Settings") };
+        if (viewport is SettingsScrollViewport smooth) smooth.WheelRequested = ScrollWheel;
+        motion.Tick += (_, _) => Advance();
         clip.Controls.Add(viewport);
         Controls.Add(clip);
         Controls.Add(bar);
         viewport.Layout += (_, _) => Arrange();
-        viewport.Scroll += (_, _) => bar.Invalidate();
+        viewport.Scroll += (_, _) => ObservePosition();
+        viewport.SizeChanged += (_, _) => StopMotion();
+        VisibleChanged += (_, _) => { if (!Visible) StopMotion(); };
+        HandleDestroyed += (_, _) => StopMotion();
         viewport.ControlAdded += (_, e) =>
         {
             // AutoScrollPosition and focus scrolling also move the content without raising Scroll.
-            if (e.Control != null) e.Control.LocationChanged += (_, _) => bar.Invalidate();
+            if (e.Control != null)
+            {
+                e.Control.LocationChanged += (_, _) => ObservePosition();
+                ObserveInput(e.Control);
+            }
         };
+        foreach (Control child in viewport.Controls) ObserveInput(child);
+    }
+
+    private void ObserveInput(Control control)
+    {
+        if (!observed.Add(control)) return;
+        // Clicking or editing an already visible field must stop movement too; it may not
+        // cause ScrollControlIntoView or change the native scroll offset at all.
+        control.MouseDown += (_, _) => StopMotion();
+        control.KeyDown += (_, _) => StopMotion();
+        control.GotFocus += (_, _) => StopMotion();
+        control.ControlAdded += (_, e) => { if (e.Control != null) ObserveInput(e.Control); };
+        control.Disposed += (_, _) => observed.Remove(control);
+        foreach (Control child in control.Controls) ObserveInput(child);
+    }
+
+    private void ObservePosition()
+    {
+        // Focus navigation and accessibility can move AutoScroll without a Scroll event.
+        if (!applying && Offset != lastWritten) StopMotion();
+        bar.Invalidate();
+    }
+
+    internal void ScrollWheel(int delta)
+    {
+        if (delta == 0) return;
+        if (!motion.Enabled && Offset != lastWritten) StopMotion();
+        int lines = SystemInformation.MouseWheelScrollLines;
+        if (lines == 0 || Maximum == 0) { StopMotion(); return; }
+        double step = lines < 0 ? viewport.ClientSize.Height : (double)lines * Math.Max(viewport.Font.Height, viewport.VerticalScroll.SmallChange);
+        double distance = -delta * step / SystemInformation.MouseWheelScrollDelta;
+        // Small wheel deltas already represent fine-grained input, possibly with OS inertia.
+        // Keep them direct and retain subpixel remainder instead of adding another animation.
+        if (Math.Abs((long)delta) < SystemInformation.MouseWheelScrollDelta || !UiMotion.Enabled || !Visible)
+        {
+            if (motion.Enabled) StopMotion();
+            target = Math.Clamp(position + distance, 0, Maximum);
+            ApplyPosition(target);
+            bar.NotifyValueChanged();
+            return;
+        }
+        double basis = motion.Enabled && Math.Sign(distance) == Math.Sign(target - position) ? target : position;
+        target = Math.Clamp(basis + distance, 0, Maximum);
+        if (Math.Abs(target - position) < .5) { ScrollTo((int)Math.Round(target)); return; }
+        // An immediate partial step keeps the first response independent of timer latency.
+        ApplyPosition(position + (target - position) * .18);
+        clock.Restart();
+        lastSample = 0;
+        motion.Start();
+    }
+
+    private void Advance()
+    {
+        if (IsDisposed || !Visible || !UiMotion.Enabled) { FinishWheel(); return; }
+        double elapsed = clock.Elapsed.TotalSeconds;
+        double seconds = Math.Max(0, elapsed - lastSample);
+        lastSample = elapsed;
+        // Time-based exponential settling: 95% of remaining travel in about 135 ms.
+        double next = target + (position - target) * Math.Exp(-seconds / .045);
+        if (Math.Abs(next - target) < .5 || elapsed >= .35) { FinishWheel(); return; }
+        ApplyPosition(next);
+    }
+
+    private void FinishWheel()
+    {
+        ScrollTo((int)Math.Round(target));
+        bar.NotifyValueChanged();
+    }
+
+    private void ApplyPosition(double value)
+    {
+        position = Math.Clamp(value, 0, Maximum);
+        int rounded = (int)Math.Round(position);
+        if (Offset == rounded) { lastWritten = rounded; return; }
+        long started = Stopwatch.GetTimestamp();
+        applying = true;
+        try
+        {
+            viewport.AutoScrollPosition = new Point(0, rounded);
+            lastWritten = Offset;
+            // Native scroll bit-copying can retain pixels from child HWNDs at their old
+            // positions. Repaint the viewport subtree; header and footer stay untouched.
+            viewport.Invalidate(true);
+            bar.Invalidate();
+        }
+        finally { applying = false; }
+        long ticks = Stopwatch.GetTimestamp() - started;
+        ScrollUpdateTicks += ticks;
+        MaximumScrollUpdateTicks = Math.Max(MaximumScrollUpdateTicks, ticks);
+        ScrollUpdates++;
+    }
+
+    private void StopMotion()
+    {
+        motion.Stop();
+        clock.Stop();
+        lastWritten = Offset;
+        position = target = lastWritten;
+    }
+
+    private void ScrollTo(int value)
+    {
+        StopMotion();
+        ApplyPosition(value);
+        target = position;
     }
 
     internal void ApplyPalette(CapturePalette palette)
@@ -44,6 +171,7 @@ internal sealed class SettingsScrollHost : Panel
 
     protected override void OnDpiChangedAfterParent(EventArgs e)
     {
+        StopMotion();
         base.OnDpiChangedAfterParent(e);
         Arrange();
     }
@@ -68,6 +196,11 @@ internal sealed class SettingsScrollHost : Panel
             }
             bar.Bounds = new Rectangle(clip.Right, 0, gutter, ClientSize.Height);
             bar.Visible = viewport.VerticalScroll.Visible;
+            if (lastMaximum != Maximum)
+            {
+                StopMotion();
+                lastMaximum = Maximum;
+            }
             bar.Invalidate();
         }
         finally { arranging = false; }
@@ -75,19 +208,19 @@ internal sealed class SettingsScrollHost : Panel
 
     private sealed class SettingsScrollBar : Control
     {
-        private readonly Panel viewport;
+        private readonly SettingsScrollHost host;
+        private Panel Viewport => host.viewport;
         private bool hovering;
         private bool dragging;
         private int dragOffset;
-        private int wheelRemainder;
         internal CapturePalette Palette { get; set; } = CapturePalette.Light;
-        private int Offset => -viewport.AutoScrollPosition.Y;
-        private int Maximum => Math.Max(0, viewport.DisplayRectangle.Height - viewport.ClientSize.Height);
+        private int Offset => host.Offset;
+        private int Maximum => host.Maximum;
         private int Scale(int value) => (int)Math.Ceiling(value * DeviceDpi / 96f);
 
-        internal SettingsScrollBar(Panel viewport)
+        internal SettingsScrollBar(SettingsScrollHost host)
         {
-            this.viewport = viewport;
+            this.host = host;
             TabStop = true;
             AccessibleRole = AccessibleRole.ScrollBar;
             SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
@@ -101,7 +234,7 @@ internal sealed class SettingsScrollHost : Panel
             {
                 Rectangle track = Track;
                 int height = Math.Min(track.Height, Math.Max(Scale(32),
-                    (int)((long)track.Height * viewport.ClientSize.Height / Math.Max(1, viewport.DisplayRectangle.Height))));
+                    (int)((long)track.Height * Viewport.ClientSize.Height / Math.Max(1, Viewport.DisplayRectangle.Height))));
                 int y = track.Top + (int)((long)(track.Height - height) * Offset / Math.Max(1, Maximum));
                 return new Rectangle(0, y, Width, height);
             }
@@ -109,10 +242,12 @@ internal sealed class SettingsScrollHost : Panel
 
         private void ScrollTo(int value)
         {
-            viewport.AutoScrollPosition = new Point(0, Math.Clamp(value, 0, Maximum));
+            host.ScrollTo(value);
             Invalidate();
-            AccessibilityNotifyClients(AccessibleEvents.ValueChange, -1);
+            NotifyValueChanged();
         }
+
+        internal void NotifyValueChanged() => AccessibilityNotifyClients(AccessibleEvents.ValueChange, -1);
 
         protected override void OnPaint(PaintEventArgs e)
         {
@@ -143,6 +278,7 @@ internal sealed class SettingsScrollHost : Panel
         {
             base.OnMouseDown(e);
             if (e.Button != MouseButtons.Left || Maximum == 0) return;
+            host.StopMotion();
             Focus();
             Rectangle thumb = Thumb;
             if (thumb.Contains(e.Location))
@@ -152,7 +288,7 @@ internal sealed class SettingsScrollHost : Panel
                 Capture = true;
                 Invalidate();
             }
-            else ScrollTo(Offset + (e.Y < thumb.Top ? -1 : 1) * Math.Max(1, viewport.ClientSize.Height - Scale(32)));
+            else ScrollTo(Offset + (e.Y < thumb.Top ? -1 : 1) * Math.Max(1, Viewport.ClientSize.Height - Scale(32)));
         }
 
         protected override void OnMouseMove(MouseEventArgs e)
@@ -180,12 +316,7 @@ internal sealed class SettingsScrollHost : Panel
         {
             base.OnMouseWheel(e);
             if (e is HandledMouseEventArgs handled) handled.Handled = true;
-            wheelRemainder += e.Delta;
-            int notches = wheelRemainder / SystemInformation.MouseWheelScrollDelta;
-            wheelRemainder %= SystemInformation.MouseWheelScrollDelta;
-            int lines = SystemInformation.MouseWheelScrollLines;
-            int step = lines < 0 ? viewport.ClientSize.Height : lines * viewport.VerticalScroll.SmallChange;
-            ScrollTo(Offset - notches * step);
+            host.ScrollWheel(e.Delta);
         }
 
         protected override bool IsInputKey(Keys keyData) => (keyData & Keys.KeyCode) is
@@ -194,11 +325,11 @@ internal sealed class SettingsScrollHost : Panel
         protected override void OnKeyDown(KeyEventArgs e)
         {
             base.OnKeyDown(e);
-            int page = Math.Max(1, viewport.ClientSize.Height - Scale(32));
+            int page = Math.Max(1, Viewport.ClientSize.Height - Scale(32));
             int? target = e.KeyCode switch
             {
-                Keys.Up => Offset - viewport.VerticalScroll.SmallChange,
-                Keys.Down => Offset + viewport.VerticalScroll.SmallChange,
+                Keys.Up => Offset - Viewport.VerticalScroll.SmallChange,
+                Keys.Down => Offset + Viewport.VerticalScroll.SmallChange,
                 Keys.PageUp => Offset - page,
                 Keys.PageDown => Offset + page,
                 Keys.Home => 0,
@@ -222,5 +353,32 @@ internal sealed class SettingsScrollHost : Panel
                 }
             }
         }
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) { motion.Stop(); motion.Dispose(); }
+        base.Dispose(disposing);
+    }
+}
+
+internal sealed class SettingsScrollViewport : Panel
+{
+    internal Action<int>? WheelRequested { get; set; }
+    internal SettingsScrollViewport() => DoubleBuffered = true;
+    protected override CreateParams CreateParams
+    {
+        get
+        {
+            CreateParams parameters = base.CreateParams;
+            parameters.ExStyle |= 0x02000000; // WS_EX_COMPOSITED: buffer the viewport's native child windows together.
+            return parameters;
+        }
+    }
+    protected override void OnMouseWheel(MouseEventArgs e)
+    {
+        if (WheelRequested == null) { base.OnMouseWheel(e); return; }
+        if (e is HandledMouseEventArgs handled) handled.Handled = true;
+        WheelRequested(e.Delta);
     }
 }

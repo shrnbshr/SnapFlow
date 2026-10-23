@@ -4,6 +4,7 @@ Set-Location -LiteralPath $PSScriptRoot
 $env:DOTNET_CLI_HOME = Join-Path $PSScriptRoot '.build-home'
 $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
 $env:DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE = 'true'
+& (Join-Path $PSScriptRoot 'tests/Validate-Localization.ps1')
 
 function Remove-GeneratedDirectory([string]$relative) {
     $taskExpected = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot $relative))
