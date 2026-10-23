@@ -2,9 +2,7 @@ using static ShareX.Roll.Localization.UiText;
 // GPL-3.0-or-later. In-window preferences and scrolling option presentation.
 using ShareX.HelpersLib;
 using ShareX.ScreenCaptureLib;
-using System.Diagnostics;
 using System.Drawing.Drawing2D;
-using System.Reflection;
 
 namespace ShareX.Roll;
 
@@ -267,130 +265,7 @@ internal sealed class SettingsPage : UserControl
             label.MaximumSize = new Size(Math.Max(1, width - label.Margin.Horizontal), 0);
     }
 
-    private SettingsGroup CreateAboutSection()
-    {
-        SettingsGroup about = new()
-        {
-            Name = "aboutSoftware", DrawDividers = false, Dock = DockStyle.Top, AutoSize = true,
-            ColumnCount = 1, Padding = new Padding(22), Margin = new Padding(0, 0, 0, 8)
-        };
-        about.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        void Add(Control control)
-        {
-            int row = about.RowCount++;
-            about.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            about.Controls.Add(control, 0, row);
-        }
-        string version = typeof(SettingsPage).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!
-            .InformationalVersion.Split('+')[0];
-        TableLayoutPanel branding = new()
-        {
-            Name = "aboutBranding", AutoSize = true, Dock = DockStyle.Top, ColumnCount = 3, RowCount = 1,
-            Margin = Padding.Empty
-        };
-        branding.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        branding.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        branding.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        branding.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        branding.Controls.Add(new AppMark
-        {
-            Name = "aboutAppMark", Size = new Size(48, 48), Margin = new Padding(0, 0, 14, 0), Anchor = AnchorStyles.Left,
-            TabStop = false, AccessibleName = "SnapFlow", AccessibleRole = AccessibleRole.Graphic
-        }, 0, 0);
-        TableLayoutPanel identity = new()
-        {
-            AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Margin = Padding.Empty
-        };
-        identity.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        identity.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        identity.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        identity.Controls.Add(new Label
-        {
-            Name = "aboutAppName", Text = "SnapFlow", AutoSize = true,
-            Font = new Font(Font.FontFamily, 16, FontStyle.Bold), Margin = new Padding(0, 0, 0, 2)
-        }, 0, 0);
-        identity.Controls.Add(new Label
-        {
-            Text = L("AboutPurpose"), AutoSize = true, Dock = DockStyle.Top, Tag = "secondary",
-            Font = new Font(Font.FontFamily, 10), Margin = Padding.Empty
-        }, 0, 1);
-        branding.Controls.Add(identity, 1, 0);
-        branding.Controls.Add(new Label
-        {
-            Name = "aboutVersion", Text = "V" + version, AutoSize = true, Anchor = AnchorStyles.Right,
-            Font = new Font(Font.FontFamily, 10), Tag = "secondary", Margin = new Padding(16, 0, 0, 0)
-        }, 2, 0);
-        Add(branding);
-        void OpenReference(string target, string caption)
-        {
-            try { Process.Start(new ProcessStartInfo(target) { UseShellExecute = true }); }
-            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or IOException or UnauthorizedAccessException)
-            { ShowFeedback(LF("OpenReferenceFailed", caption)); }
-        }
-        TableLayoutPanel project = new()
-        {
-            Name = "aboutProject", AutoSize = true, Dock = DockStyle.Top, ColumnCount = 2,
-            Margin = new Padding(0, 16, 0, 0)
-        };
-        project.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        project.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        void AddProjectLink(string name, string caption, string text, string target)
-        {
-            int row = project.RowCount++;
-            project.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            project.Controls.Add(new Label
-            {
-                Text = caption, AutoSize = true, Tag = "secondary", Font = new Font(Font.FontFamily, 10),
-                Margin = new Padding(0, 0, 16, 6)
-            }, 0, row);
-            LinkLabel link = new()
-            {
-                Name = name, Text = text, AutoSize = true, Dock = DockStyle.Top, Font = new Font(Font.FontFamily, 10),
-                LinkBehavior = LinkBehavior.HoverUnderline, Margin = new Padding(0, 0, 0, 6),
-                AccessibleName = caption + ": " + text, AccessibleDescription = target
-            };
-            link.Links.Add(0, text.Length, target);
-            link.LinkClicked += (_, _) => OpenReference(target, text);
-            project.Controls.Add(link, 1, row);
-        }
-        AddProjectLink("aboutRepository", L("AboutRepository"), "https://github.com/shrnbshr/SnapFlow", "https://github.com/shrnbshr/SnapFlow");
-        AddProjectLink("aboutGitHubAccount", L("AboutGitHubAccount"), "@shrnbshr", "https://github.com/shrnbshr");
-        Add(project);
-        Add(new Label
-        {
-            Name = "aboutOrigin", Text = L("AboutOrigin"), AutoSize = true, Dock = DockStyle.Top,
-            Font = new Font(Font.FontFamily, 10.5f), Margin = new Padding(0, 16, 0, 12)
-        });
-        Add(new Label
-        {
-            Name = "aboutCredits", Text = L("AboutLicense") + Environment.NewLine + "Copyright (c) 2007–2026 ShareX Team.",
-            AutoSize = true, Dock = DockStyle.Top, Font = new Font(Font.FontFamily, 10),
-            Tag = "secondary", Margin = Padding.Empty
-        });
-        Add(new Panel { Name = "aboutDivider", Dock = DockStyle.Top, Height = 1, Margin = new Padding(0, 16, 0, 8) });
-        TableLayoutPanel links = new()
-        {
-            Name = "aboutLinks", Dock = DockStyle.Top, Height = 36, ColumnCount = 3, RowCount = 1, Margin = Padding.Empty
-        };
-        for (int i = 0; i < 3; i++) links.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / 3));
-        links.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        void AddLink(string name, string text, string target)
-        {
-            Button link = new()
-            {
-                Name = name, Text = text, Dock = DockStyle.Fill, Font = new Font(Font.FontFamily, 10),
-                Tag = "quiet", Margin = Padding.Empty, FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand,
-                AccessibleDescription = target
-            };
-            link.Click += (_, _) => OpenReference(target, text);
-            links.Controls.Add(link, links.Controls.Count, 0);
-        }
-        AddLink("aboutUpstream", L("AboutUpstream"), "https://github.com/ShareX/ShareX/tree/v21.0.0");
-        AddLink("aboutLicense", L("AboutLicenseLink"), Path.Combine(AppContext.BaseDirectory, "LICENSE.txt"));
-        AddLink("aboutNotice", L("AboutNoticeLink"), Path.Combine(AppContext.BaseDirectory, "NOTICE.md"));
-        Add(links);
-        return about;
-    }
+    private SettingsGroup CreateAboutSection() => SettingsAbout.Create(Font, ShowFeedback);
 
     private void SaveAndReturn()
     {
@@ -418,6 +293,7 @@ internal sealed class SettingsPage : UserControl
             if (control.Name == "aboutDivider") control.BackColor = palette.Border;
             if (control is SettingsNumberField number) { number.ApplyPalette(palette); return; }
             if (control is SettingsChoice choice) { choice.ApplyPalette(palette); return; }
+            if (control is AboutLinkButton aboutLink) { aboutLink.ApplyPalette(palette); return; }
             if (control is AppMark mark) { mark.Palette = palette; mark.Invalidate(); }
             if (control is LinkLabel link)
             {

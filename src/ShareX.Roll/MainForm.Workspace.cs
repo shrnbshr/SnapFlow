@@ -160,7 +160,7 @@ public sealed partial class MainForm
         status.AccessibleName = L("CaptureStatus");
         workspace.Controls.Add(status, 0, 2);
         Controls.Add(workspace);
-        SizeWorkspaceActions();
+        // Initial sizes are logical pixels; WinForms applies the first DPI scale afterwards.
     }
 
     private void RefreshPreviewToolbar()

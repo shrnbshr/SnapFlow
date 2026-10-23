@@ -40,7 +40,11 @@ public sealed partial class MainForm : HotkeyForm
         save.Click += (_, _) => { if (result != null) SaveImage(result); };
         edit.Click += (_, _) => EditResult();
         HotkeyPress += async (id, _, _) => await DispatchCaptureHotkeyAsync(id);
-        Shown += (_, _) => RegisterCaptureHotkeys();
+        Shown += (_, _) =>
+        {
+            RegisterCaptureHotkeys();
+            ActiveControl = null;
+        };
         FormClosing += (_, e) =>
         {
             if (scrollForm is { IsDisposed: false })

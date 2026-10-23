@@ -49,6 +49,7 @@ internal static class SettingsScrollMotionRegression
             Control content = Field<TableLayoutPanel>(page, "content");
             Control bar = Find<Control>(page, "settingsScrollBar");
             SettingsScrollHost host = Find<SettingsScrollHost>(page, "settingsScrollHost");
+            PropertyInfo thumbProperty = bar.GetType().GetProperty("Thumb", BindingFlags.NonPublic | BindingFlags.Instance)!;
             int Offset() => -viewport.AutoScrollPosition.Y;
             int Maximum() => Math.Max(0, viewport.DisplayRectangle.Height - viewport.ClientSize.Height);
             Console.WriteLine($"CONFIG: DPI={main.DeviceDpi}, animation={UiMotion.Enabled}, lines={SystemInformation.MouseWheelScrollLines}, smallChange={viewport.VerticalScroll.SmallChange}, maximum={Maximum()}");
@@ -59,20 +60,35 @@ internal static class SettingsScrollMotionRegression
                 await Task.Delay(80);
                 viewport.AutoScrollPosition = Point.Empty;
                 List<(double Time, int Position)> trace = new();
+                List<double> paints = new();
                 int layouts = 0;
                 Stopwatch clock = Stopwatch.StartNew();
                 EventHandler moved = (_, _) => trace.Add((clock.Elapsed.TotalMilliseconds, Offset()));
+                float lastPaintedTop = float.NaN;
+                PaintEventHandler painted = (_, _) =>
+                {
+                    object thumb = thumbProperty.GetValue(bar)!;
+                    float top = thumb is RectangleF fractional ? fractional.Top : ((Rectangle)thumb).Top;
+                    if (paints.Count == 0 || Math.Abs(top - lastPaintedTop) >= .01f)
+                    {
+                        paints.Add(clock.Elapsed.TotalMilliseconds);
+                        lastPaintedTop = top;
+                    }
+                };
                 LayoutEventHandler laidOut = (_, _) => layouts++;
                 content.LocationChanged += moved;
                 content.Layout += laidOut;
+                bar.Paint += painted;
                 Wheel(viewport, -120);
                 int immediate = Offset();
                 await Task.Delay(420);
                 content.LocationChanged -= moved;
                 content.Layout -= laidOut;
+                bar.Paint -= painted;
                 foreach (var sample in trace)
                     rows.Add(FormattableString.Invariant($"{mode},{sample.Time:F3},{sample.Position}"));
                 Console.WriteLine($"TRACE: {mode}, immediate={immediate}, final={Offset()}, nativePositionUpdates={trace.Count}, contentLayouts={layouts}, lastUpdateMs={(trace.Count == 0 ? 0 : trace[^1].Time):F2}");
+                ReportCadence(mode + " single wheel", paints);
                 if (!baseline)
                 {
                     Check(Offset() > 0, mode + ": wheel moves the native viewport");
@@ -99,12 +115,103 @@ internal static class SettingsScrollMotionRegression
                     }
                     await Task.Delay(220);
                 }
+                viewport.AutoScrollPosition = Point.Empty;
+                await Task.Delay(80);
+                paints.Clear();
+                clock.Restart();
+                bar.Paint += painted;
+                for (int i = 0; i < 16; i++)
+                {
+                    Wheel(viewport, i < 8 ? -120 : 120);
+                    await Task.Delay(12);
+                }
+                await Task.Delay(220);
+                bar.Paint -= painted;
+                ReportCadence(mode + " rapid wheel", paints);
+
+                viewport.AutoScrollPosition = Point.Empty;
+                bar.Focus();
+                await Task.Delay(80);
+                paints.Clear();
+                clock.Restart();
+                bar.Paint += painted;
+                int grabY = 10 * main.DeviceDpi / 96;
+                object initialThumb = thumbProperty.GetValue(bar)!;
+                float thumbHeight = initialThumb is RectangleF thumbF ? thumbF.Height : ((Rectangle)initialThumb).Height;
+                int dragTravel = Math.Max(1, bar.Height - 8 * main.DeviceDpi / 96 - (int)Math.Ceiling(thumbHeight));
+                Input(bar, "OnMouseDown", new MouseEventArgs(MouseButtons.Left, 1, bar.Width / 2, grabY, 0));
+                for (int i = 1; i <= 48; i++)
+                {
+                    int y = grabY + dragTravel * (i <= 24 ? i : 48 - i) / 24;
+                    Input(bar, "OnMouseMove", new MouseEventArgs(MouseButtons.Left, 0, bar.Width / 2, y, 0));
+                    await Task.Delay(8);
+                }
+                Input(bar, "OnMouseUp", new MouseEventArgs(MouseButtons.Left, 1, bar.Width / 2, grabY, 0));
+                await Task.Delay(60);
+                bar.Paint -= painted;
+                ReportCadence(mode + " rapid drag", paints);
+                if (record)
+                {
+                    viewport.AutoScrollPosition = Point.Empty;
+                    await Task.Delay(60);
+                    IntPtr window = main.Handle;
+                    Task<List<Bitmap>> sample = Task.Run(async () =>
+                    {
+                        List<Bitmap> images = new();
+                        for (int i = 0; i < 8; i++)
+                        {
+                            await Task.Delay(20);
+                            images.Add(new Screenshot().CaptureWindow(window));
+                        }
+                        return images;
+                    });
+                    Input(bar, "OnMouseDown", new MouseEventArgs(MouseButtons.Left, 1, bar.Width / 2, grabY, 0));
+                    for (int i = 1; i <= 40; i++)
+                    {
+                        int y = grabY + dragTravel * (i <= 20 ? i : 40 - i) / 20;
+                        Input(bar, "OnMouseMove", new MouseEventArgs(MouseButtons.Left, 0, bar.Width / 2, y, 0));
+                        await Task.Delay(8);
+                    }
+                    Input(bar, "OnMouseUp", new MouseEventArgs(MouseButtons.Left, 1, bar.Width / 2, grabY, 0));
+                    List<Bitmap> images = await sample;
+                    try
+                    {
+                        for (int i = 0; i < images.Count; i++) images[i].Save(Path.Combine(output, $"drag-{mode}-{main.DeviceDpi}-{i}.png"), ImageFormat.Png);
+                    }
+                    finally { foreach (Bitmap image in images) image.Dispose(); }
+                }
+
+                viewport.AutoScrollPosition = Point.Empty;
+                int streamedPaints = 0;
+                PaintEventHandler stream = (_, _) => streamedPaints++;
+                bar.Paint += stream;
+                Input(bar, "OnMouseDown", new MouseEventArgs(MouseButtons.Left, 1, bar.Width / 2, grabY, 0));
+                for (int i = 1; i <= 32; i++)
+                    Input(bar, "OnMouseMove", new MouseEventArgs(MouseButtons.Left, 0, bar.Width / 2, grabY + (bar.Height + 40) * i / 32, 0));
+                Input(bar, "OnMouseUp", new MouseEventArgs(MouseButtons.Left, 1, bar.Width / 2, bar.Height + 40, 0));
+                bar.Paint -= stream;
+                Console.WriteLine($"DRAG: {mode}, thumb paints during an unbroken input burst={streamedPaints}");
+                if (!baseline) Check(streamedPaints >= 8 && Offset() == Maximum(), mode + ": rapid drag paints intermediate thumb positions before the input queue becomes idle");
             }
             if (!baseline)
             {
                 int lines = SystemInformation.MouseWheelScrollLines;
                 int step = lines < 0 ? viewport.ClientSize.Height : lines * Math.Max(viewport.Font.Height, viewport.VerticalScroll.SmallChange);
                 if (lines == 0) throw new InvalidOperationException("Wheel tests require a nonzero Windows wheel-scroll setting");
+                viewport.AutoScrollPosition = Point.Empty;
+                Wheel(viewport, -120);
+                int prematureSettles = 0;
+                EventHandler settling = (_, _) => { if (!host.IsScrolling) prematureSettles++; };
+                content.LocationChanged += settling;
+                for (int i = 1; i < 10; i++)
+                {
+                    await Task.Delay(50);
+                    Wheel(viewport, -120);
+                }
+                content.LocationChanged -= settling;
+                Check(prematureSettles == 0 && host.IsScrolling, "sustained wheel input keeps a single continuous animation without periodic target jumps");
+                await Task.Delay(420);
+                Check(Offset() == Math.Min(10 * step, Maximum()) && !host.IsScrolling, "sustained wheel input settles at the exact accumulated destination");
                 viewport.AutoScrollPosition = Point.Empty;
                 Wheel(bar, -120);
                 await Task.Delay(420);
@@ -233,5 +340,12 @@ internal static class SettingsScrollMotionRegression
             main.TopMost = originalTopMost;
             main.Size = originalSize;
         }
+    }
+
+    private static void ReportCadence(string label, List<double> paints)
+    {
+        double[] gaps = paints.Zip(paints.Skip(1)).Select(pair => pair.Second - pair.First).Order().ToArray();
+        if (gaps.Length == 0) { Console.WriteLine("CADENCE: " + label + ", no paint intervals"); return; }
+        Console.WriteLine(FormattableString.Invariant($"CADENCE: {label}, paints={paints.Count}, medianMs={gaps[gaps.Length / 2]:F2}, p95Ms={gaps[(int)((gaps.Length - 1) * .95)]:F2}, maxMs={gaps[^1]:F2}"));
     }
 }

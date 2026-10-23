@@ -109,6 +109,8 @@ V1.0.2 仅提供简体中文、香港繁体中文和英文。默认跟随 Window
 
 程序运行时请先正常退出，再重新构建。构建脚本会保留本地设置，分发包不包含个人配置。
 
+需要生成安装版时，安装 Inno Setup 6.5 或更新版本，然后运行 `./build-installer.ps1`（可用 `-IsccPath` 指定 `ISCC.exe`）。脚本生成 `dist/SnapFlow-<版本>-setup-x64.exe` 和对应版本源码包。安装版内置 .NET 运行时，默认安装到当前用户目录，提供开始菜单入口、可选桌面快捷方式及卸载功能；不包含个人配置。详见 [安装版说明](installer/README.md)。
+
 源码结构：
 
 - `src/ShareX.Roll/`：SnapFlow 主程序、工作台、设置与编辑器集成。

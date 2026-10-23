@@ -32,6 +32,12 @@ internal static class UiRegression
         Size normalSize = main.Size;
         try
         {
+            Button settings = Find<Button>(main, "settingsButton");
+            Console.WriteLine($"METRIC: startup settings bounds={settings.Bounds}, dpi={main.DeviceDpi}");
+            Check(settings.Width <= 160 * main.DeviceDpi / 96,
+                "startup settings button stays compact at the current display scale");
+            Check(settings.Width >= TextRenderer.MeasureText(settings.Text, settings.Font, Size.Empty, TextFormatFlags.NoPadding | TextFormatFlags.SingleLine).Width + 32 * main.DeviceDpi / 96,
+                "startup settings button has room for its icon and label");
             main.TopMost = true;
             main.ForceActivate();
             foreach (AppearanceMode mode in new[] { AppearanceMode.Light, AppearanceMode.Dark })

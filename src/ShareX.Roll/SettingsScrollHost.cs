@@ -10,10 +10,10 @@ internal sealed class SettingsScrollHost : Panel
     private readonly Panel clip = new() { Margin = Padding.Empty, TabStop = false };
     private readonly Panel viewport;
     private readonly SettingsScrollBar bar;
-    private readonly System.Windows.Forms.Timer motion = new() { Interval = 15 };
+    private readonly ScrollFrameClock motion;
     private readonly Stopwatch clock = new();
     private readonly HashSet<Control> observed = new();
-    private double position, target, lastSample;
+    private double position, target, lastSample, lastInput;
     private int lastWritten, lastMaximum;
     private bool applying;
     private bool arranging;
@@ -31,7 +31,7 @@ internal sealed class SettingsScrollHost : Panel
         TabStop = false;
         bar = new SettingsScrollBar(this) { Name = "settingsScrollBar", AccessibleName = L("Settings") };
         if (viewport is SettingsScrollViewport smooth) smooth.WheelRequested = ScrollWheel;
-        motion.Tick += (_, _) => Advance();
+        motion = new ScrollFrameClock(this, Advance);
         clip.Controls.Add(viewport);
         Controls.Add(clip);
         Controls.Add(bar);
@@ -90,13 +90,16 @@ internal sealed class SettingsScrollHost : Panel
             bar.NotifyValueChanged();
             return;
         }
-        double basis = motion.Enabled && Math.Sign(distance) == Math.Sign(target - position) ? target : position;
+        bool continuing = motion.Enabled;
+        bool sameDirection = continuing && Math.Sign(distance) == Math.Sign(target - position);
+        double basis = sameDirection ? target : position;
         target = Math.Clamp(basis + distance, 0, Maximum);
         if (Math.Abs(target - position) < .5) { ScrollTo((int)Math.Round(target)); return; }
-        // An immediate partial step keeps the first response independent of timer latency.
-        ApplyPosition(position + (target - position) * .18);
-        clock.Restart();
-        lastSample = 0;
+        // Retarget ongoing motion without restarting its clock or jumping on each notch.
+        // A new gesture or reversal still gets an immediate, small response.
+        if (!sameDirection) ApplyPosition(position + Math.Sign(distance) * Math.Min(Math.Abs(target - position) * .08, 6 * DeviceDpi / 96d));
+        if (!continuing) { clock.Restart(); lastSample = 0; }
+        lastInput = clock.Elapsed.TotalSeconds;
         motion.Start();
     }
 
@@ -108,7 +111,7 @@ internal sealed class SettingsScrollHost : Panel
         lastSample = elapsed;
         // Time-based exponential settling: 95% of remaining travel in about 135 ms.
         double next = target + (position - target) * Math.Exp(-seconds / .045);
-        if (Math.Abs(next - target) < .5 || elapsed >= .35) { FinishWheel(); return; }
+        if (Math.Abs(next - target) < .5 || elapsed - lastInput >= .35) { FinishWheel(); return; }
         ApplyPosition(next);
     }
 
@@ -120,19 +123,25 @@ internal sealed class SettingsScrollHost : Panel
 
     private void ApplyPosition(double value)
     {
+        double previous = position;
         position = Math.Clamp(value, 0, Maximum);
         int rounded = (int)Math.Round(position);
-        if (Offset == rounded) { lastWritten = rounded; return; }
+        if (Offset == rounded)
+        {
+            lastWritten = rounded;
+            if (previous != position) { bar.Invalidate(); bar.Update(); }
+            return;
+        }
         long started = Stopwatch.GetTimestamp();
         applying = true;
         try
         {
             viewport.AutoScrollPosition = new Point(0, rounded);
             lastWritten = Offset;
-            // Native scroll bit-copying can retain pixels from child HWNDs at their old
-            // positions. Repaint the viewport subtree; header and footer stay untouched.
-            viewport.Invalidate(true);
+            // The native scroll operation invalidates the exposed bands and moved HWNDs.
+            // Do not invalidate every descendant again for each input/frame.
             bar.Invalidate();
+            bar.Update();
         }
         finally { applying = false; }
         long ticks = Stopwatch.GetTimestamp() - started;
@@ -149,7 +158,7 @@ internal sealed class SettingsScrollHost : Panel
         position = target = lastWritten;
     }
 
-    private void ScrollTo(int value)
+    private void ScrollTo(double value)
     {
         StopMotion();
         ApplyPosition(value);
@@ -212,7 +221,7 @@ internal sealed class SettingsScrollHost : Panel
         private Panel Viewport => host.viewport;
         private bool hovering;
         private bool dragging;
-        private int dragOffset;
+        private float dragOffset;
         internal CapturePalette Palette { get; set; } = CapturePalette.Light;
         private int Offset => host.Offset;
         private int Maximum => host.Maximum;
@@ -228,22 +237,21 @@ internal sealed class SettingsScrollHost : Panel
         }
 
         private Rectangle Track => new(0, Scale(4), Width, Math.Max(0, Height - Scale(8)));
-        private Rectangle Thumb
+        private RectangleF Thumb
         {
             get
             {
                 Rectangle track = Track;
-                int height = Math.Min(track.Height, Math.Max(Scale(32),
-                    (int)((long)track.Height * Viewport.ClientSize.Height / Math.Max(1, Viewport.DisplayRectangle.Height))));
-                int y = track.Top + (int)((long)(track.Height - height) * Offset / Math.Max(1, Maximum));
-                return new Rectangle(0, y, Width, height);
+                float height = Math.Min(track.Height, Math.Max(Scale(32),
+                    (float)track.Height * Viewport.ClientSize.Height / Math.Max(1, Viewport.DisplayRectangle.Height)));
+                float y = track.Top + (float)((track.Height - height) * host.position / Math.Max(1, Maximum));
+                return new RectangleF(0, y, Width, height);
             }
         }
 
-        private void ScrollTo(int value)
+        private void ScrollTo(double value)
         {
             host.ScrollTo(value);
-            Invalidate();
             NotifyValueChanged();
         }
 
@@ -252,7 +260,7 @@ internal sealed class SettingsScrollHost : Panel
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
-            Rectangle thumb = Thumb;
+            RectangleF thumb = Thumb;
             if (Maximum == 0 || thumb.Height == 0) return;
             int width = Scale(hovering || dragging || Focused ? 8 : 6);
             RectangleF shape = new((Width - width) / 2f, thumb.Top, width, thumb.Height);
@@ -280,7 +288,7 @@ internal sealed class SettingsScrollHost : Panel
             if (e.Button != MouseButtons.Left || Maximum == 0) return;
             host.StopMotion();
             Focus();
-            Rectangle thumb = Thumb;
+            RectangleF thumb = Thumb;
             if (thumb.Contains(e.Location))
             {
                 dragOffset = e.Y - thumb.Top;
@@ -295,8 +303,8 @@ internal sealed class SettingsScrollHost : Panel
         {
             base.OnMouseMove(e);
             if (!dragging) return;
-            int travel = Track.Height - Thumb.Height;
-            if (travel > 0) ScrollTo((int)Math.Round((double)(e.Y - dragOffset - Track.Top) * Maximum / travel));
+            float travel = Track.Height - Thumb.Height;
+            if (travel > 0) ScrollTo((double)(e.Y - dragOffset - Track.Top) * Maximum / travel);
         }
 
         protected override void OnMouseUp(MouseEventArgs e)

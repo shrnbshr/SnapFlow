@@ -239,6 +239,7 @@ Esc to cancel</value>
   <data xml:space="preserve" name="ConfirmCrop"><value>Confirm crop</value></data>
   <data xml:space="preserve" name="CropEdgesHint"><value>Drag the edges · Enter to confirm · Esc to cancel</value></data>
   <data name="About" xml:space="preserve"><value>About</value></data>
+  <data name="AboutTagline" xml:space="preserve"><value>Not every feature. Just simple, easy scrolling screenshots.</value></data>
   <data name="AboutPurpose" xml:space="preserve"><value>Local screenshots and scrolling capture</value></data>
   <data name="AboutOrigin" xml:space="preserve"><value>An unofficial derivative of ShareX 21.0.0, reusing and adapting its capture and image editing code.</value></data>
   <data name="AboutLicense" xml:space="preserve"><value>Open-source license: GNU GPL version 3 or later.</value></data>

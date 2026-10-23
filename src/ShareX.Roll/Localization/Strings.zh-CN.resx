@@ -239,6 +239,7 @@
   <data xml:space="preserve" name="ConfirmCrop"><value>确认裁剪</value></data>
   <data xml:space="preserve" name="CropEdgesHint"><value>拖动边界调整 · Enter 确认 · Esc 取消</value></data>
   <data name="About" xml:space="preserve"><value>关于软件</value></data>
+  <data name="AboutTagline" xml:space="preserve"><value>不求面面俱到，只求滚动截图简单好用。</value></data>
   <data name="AboutPurpose" xml:space="preserve"><value>本地截图与滚动长截图</value></data>
   <data name="AboutOrigin" xml:space="preserve"><value>基于 ShareX 21.0.0 的非官方衍生版本，复用并修改了其截图与图像编辑代码。</value></data>
   <data name="AboutLicense" xml:space="preserve"><value>开源许可：GNU GPL v3 或更高版本。</value></data>

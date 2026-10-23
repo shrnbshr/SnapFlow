@@ -65,6 +65,26 @@ internal static class SettingsScrollbarRegression
             viewport.AutoScrollPosition = new Point(0, Maximum());
             using Bitmap bottom = Render(main);
             bottom.Save(Path.Combine(output, $"settings-bottom-{mode}-{main.DeviceDpi}.png"), ImageFormat.Png);
+            foreach (bool wide in new[] { false, true })
+            {
+                if (wide) main.ClientSize = new Size(960 * main.DeviceDpi / 96, 720 * main.DeviceDpi / 96);
+                await Task.Delay(40);
+                AboutLinkButton repository = Find<AboutLinkButton>(page, "aboutRepository");
+                AboutLinkButton account = Find<AboutLinkButton>(page, "aboutGitHubAccount");
+                Check(repository.DetailAvailable >= repository.DetailWidth && account.DetailAvailable >= account.DetailWidth,
+                    mode + ": repository address and account fit without ellipsis at " + (wide ? "regular" : "minimum") + " width");
+                Check(!repository.Bounds.IntersectsWith(account.Bounds) && !viewport.HorizontalScroll.Visible,
+                    mode + ": project links remain separate without horizontal scrolling");
+                Check(repository.AccessibilityObject.Role == AccessibleRole.PushButton && repository.AccessibleDescription == "https://github.com/shrnbshr/SnapFlow",
+                    "repository retains native button semantics and the complete destination");
+                viewport.ScrollControlIntoView(repository);
+                repository.Focus();
+                Check(repository.Focused && repository.TabStop, "project links are reachable by keyboard");
+                using Bitmap card = Render(Find<Control>(page, "aboutSoftware"));
+                card.Save(Path.Combine(output, $"about-{mode}-{(wide ? "regular" : "minimum")}-{main.DeviceDpi}.png"), ImageFormat.Png);
+            }
+            main.Size = main.MinimumSize;
+            await Task.Delay(40);
             viewport.AutoScrollPosition = Point.Empty;
         }
         int start = Offset();
@@ -72,6 +92,7 @@ internal static class SettingsScrollbarRegression
         Check(Offset() > start, "native viewport still scrolls with the mouse wheel");
         start = Offset();
         Input(bar, "OnMouseWheel", new HandledMouseEventArgs(MouseButtons.None, 0, 5, 5, -120));
+        await Task.Delay(40);
         Check(Offset() > start, "wheel over the custom scrollbar scrolls the same viewport");
         bar.Focus();
         Input(bar, "OnKeyDown", new KeyEventArgs(Keys.End));
