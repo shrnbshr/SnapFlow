@@ -242,7 +242,9 @@ Esc to cancel</value>
   <data name="AboutPurpose" xml:space="preserve"><value>Local screenshots and scrolling capture</value></data>
   <data name="AboutOrigin" xml:space="preserve"><value>An unofficial derivative of ShareX 21.0.0, reusing and adapting its capture and image editing code.</value></data>
   <data name="AboutLicense" xml:space="preserve"><value>Open-source license: GNU GPL version 3 or later.</value></data>
-  <data name="AboutUpstream" xml:space="preserve"><value>View source ↗</value></data>
+  <data name="AboutRepository" xml:space="preserve"><value>Repository</value></data>
+  <data name="AboutGitHubAccount" xml:space="preserve"><value>GitHub account</value></data>
+  <data name="AboutUpstream" xml:space="preserve"><value>Upstream project ↗</value></data>
   <data name="AboutLicenseLink" xml:space="preserve"><value>View license</value></data>
   <data name="AboutNoticeLink" xml:space="preserve"><value>Change notes</value></data>
   <data name="OpenReferenceFailed" xml:space="preserve"><value>Unable to open: {0}</value></data>

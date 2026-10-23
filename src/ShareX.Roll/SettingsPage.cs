@@ -311,6 +311,41 @@ internal sealed class SettingsPage : UserControl
             Font = new Font(Font.FontFamily, 10), Tag = "secondary", Margin = new Padding(16, 0, 0, 0)
         }, 2, 0);
         Add(branding);
+        void OpenReference(string target, string caption)
+        {
+            try { Process.Start(new ProcessStartInfo(target) { UseShellExecute = true }); }
+            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or IOException or UnauthorizedAccessException)
+            { ShowFeedback(LF("OpenReferenceFailed", caption)); }
+        }
+        TableLayoutPanel project = new()
+        {
+            Name = "aboutProject", AutoSize = true, Dock = DockStyle.Top, ColumnCount = 2,
+            Margin = new Padding(0, 16, 0, 0)
+        };
+        project.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        project.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        void AddProjectLink(string name, string caption, string text, string target)
+        {
+            int row = project.RowCount++;
+            project.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            project.Controls.Add(new Label
+            {
+                Text = caption, AutoSize = true, Tag = "secondary", Font = new Font(Font.FontFamily, 10),
+                Margin = new Padding(0, 0, 16, 6)
+            }, 0, row);
+            LinkLabel link = new()
+            {
+                Name = name, Text = text, AutoSize = true, Dock = DockStyle.Top, Font = new Font(Font.FontFamily, 10),
+                LinkBehavior = LinkBehavior.HoverUnderline, Margin = new Padding(0, 0, 0, 6),
+                AccessibleName = caption + ": " + text, AccessibleDescription = target
+            };
+            link.Links.Add(0, text.Length, target);
+            link.LinkClicked += (_, _) => OpenReference(target, text);
+            project.Controls.Add(link, 1, row);
+        }
+        AddProjectLink("aboutRepository", L("AboutRepository"), "https://github.com/shrnbshr/SnapFlow", "https://github.com/shrnbshr/SnapFlow");
+        AddProjectLink("aboutGitHubAccount", L("AboutGitHubAccount"), "@shrnbshr", "https://github.com/shrnbshr");
+        Add(project);
         Add(new Label
         {
             Name = "aboutOrigin", Text = L("AboutOrigin"), AutoSize = true, Dock = DockStyle.Top,
@@ -337,12 +372,7 @@ internal sealed class SettingsPage : UserControl
                 Tag = "quiet", Margin = Padding.Empty, FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand,
                 AccessibleDescription = target
             };
-            link.Click += (_, _) =>
-            {
-                try { Process.Start(new ProcessStartInfo(target) { UseShellExecute = true }); }
-                catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or IOException or UnauthorizedAccessException)
-                { ShowFeedback(LF("OpenReferenceFailed", text)); }
-            };
+            link.Click += (_, _) => OpenReference(target, text);
             links.Controls.Add(link, links.Controls.Count, 0);
         }
         AddLink("aboutUpstream", L("AboutUpstream"), "https://github.com/ShareX/ShareX/tree/v21.0.0");

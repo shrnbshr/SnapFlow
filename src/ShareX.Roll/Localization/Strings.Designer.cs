@@ -93,6 +93,8 @@ internal static class Strings
     internal static string CropEdgesHint => UiText.L("CropEdgesHint");
     internal static string About => UiText.L("About");
     internal static string AboutPurpose => UiText.L("AboutPurpose");
+    internal static string AboutRepository => UiText.L("AboutRepository");
+    internal static string AboutGitHubAccount => UiText.L("AboutGitHubAccount");
     internal static string AboutOrigin => UiText.L("AboutOrigin");
     internal static string AboutLicense => UiText.L("AboutLicense");
     internal static string AboutUpstream => UiText.L("AboutUpstream");

@@ -242,7 +242,9 @@
   <data name="AboutPurpose" xml:space="preserve"><value>本機截圖與捲動長截圖</value></data>
   <data name="AboutOrigin" xml:space="preserve"><value>基於 ShareX 21.0.0 的非官方衍生版本，重用並修改了其截圖與影像編輯程式碼。</value></data>
   <data name="AboutLicense" xml:space="preserve"><value>開源授權：GNU GPL v3 或更新版本。</value></data>
-  <data name="AboutUpstream" xml:space="preserve"><value>檢視原始專案 ↗</value></data>
+  <data name="AboutRepository" xml:space="preserve"><value>專案倉庫</value></data>
+  <data name="AboutGitHubAccount" xml:space="preserve"><value>GitHub 帳號</value></data>
+  <data name="AboutUpstream" xml:space="preserve"><value>上游專案 ↗</value></data>
   <data name="AboutLicenseLink" xml:space="preserve"><value>檢視授權條款</value></data>
   <data name="AboutNoticeLink" xml:space="preserve"><value>修改記錄</value></data>
   <data name="OpenReferenceFailed" xml:space="preserve"><value>無法開啟：{0}</value></data>

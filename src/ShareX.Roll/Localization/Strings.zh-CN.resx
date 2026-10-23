@@ -242,7 +242,9 @@
   <data name="AboutPurpose" xml:space="preserve"><value>本地截图与滚动长截图</value></data>
   <data name="AboutOrigin" xml:space="preserve"><value>基于 ShareX 21.0.0 的非官方衍生版本，复用并修改了其截图与图像编辑代码。</value></data>
   <data name="AboutLicense" xml:space="preserve"><value>开源许可：GNU GPL v3 或更高版本。</value></data>
-  <data name="AboutUpstream" xml:space="preserve"><value>查看源项目 ↗</value></data>
+  <data name="AboutRepository" xml:space="preserve"><value>项目仓库</value></data>
+  <data name="AboutGitHubAccount" xml:space="preserve"><value>GitHub 账号</value></data>
+  <data name="AboutUpstream" xml:space="preserve"><value>上游项目 ↗</value></data>
   <data name="AboutLicenseLink" xml:space="preserve"><value>查看许可证</value></data>
   <data name="AboutNoticeLink" xml:space="preserve"><value>修改记录</value></data>
   <data name="OpenReferenceFailed" xml:space="preserve"><value>无法打开：{0}</value></data>
