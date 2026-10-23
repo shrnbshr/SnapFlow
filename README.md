@@ -5,9 +5,9 @@
 <h1 align="center">SnapFlow</h1>
 
 <p align="center">
-  <a href="https://github.com/shrnbshr/SnapFlow/stargazers"><img src="https://img.shields.io/github/stars/shrnbshr/SnapFlow?style=flat-square&amp;label=Stars&amp;color=2563eb" alt="GitHub Star 数量"></a>
-  <a href="https://github.com/shrnbshr/SnapFlow/releases/latest"><img src="https://img.shields.io/github/v/release/shrnbshr/SnapFlow?style=flat-square&amp;label=Release&amp;color=2563eb" alt="最新 Release 版本"></a>
-  <a href="https://github.com/shrnbshr/SnapFlow/search?l=c%23"><img src="https://img.shields.io/github/languages/top/shrnbshr/SnapFlow?style=flat-square&amp;label=Language&amp;color=2563eb" alt="主要编程语言"></a>
+  <a href="https://github.com/shrnbshr/SnapFlow/stargazers"><img src="https://img.shields.io/github/stars/shrnbshr/SnapFlow?style=social&amp;logo=github&amp;label=Stars" alt="GitHub Star 数量"></a>
+  <a href="https://github.com/shrnbshr/SnapFlow/releases/latest"><img src="https://img.shields.io/github/v/release/shrnbshr/SnapFlow?style=plastic&amp;label=release&amp;color=blue" alt="最新 Release 版本"></a>
+  <a href="https://github.com/shrnbshr/SnapFlow/search?l=c%23"><img src="https://img.shields.io/github/languages/top/shrnbshr/SnapFlow?style=plastic&amp;color=blue" alt="主要编程语言与占比"></a>
 </p>
 
 ## 项目介绍
