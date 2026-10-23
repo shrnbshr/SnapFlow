@@ -1,0 +1,278 @@
+<?xml version='1.0' encoding='utf-8'?>
+<root>
+  <data xml:space="preserve" name="ScrollAutoSave">
+    <value>Open save dialog when capture finishes</value>
+  </data>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <data xml:space="preserve" name="Settings">
+    <value>Settings</value>
+  </data>
+  <data xml:space="preserve" name="Region">
+    <value>Region / window</value>
+  </data>
+  <data xml:space="preserve" name="Window">
+    <value>Window capture</value>
+  </data>
+  <data xml:space="preserve" name="Full">
+    <value>Full screen</value>
+  </data>
+  <data xml:space="preserve" name="Scroll">
+    <value>Scroll capture</value>
+  </data>
+  <data xml:space="preserve" name="EmptySettings">
+    <value>The preferences file is empty</value>
+  </data>
+  <data xml:space="preserve" name="InvalidSettings">
+    <value>Invalid preferences format</value>
+  </data>
+  <data xml:space="preserve" name="InvalidShortcutSuffix">
+    <value> shortcut is invalid</value>
+  </data>
+  <data xml:space="preserve" name="ScrollHelp">
+    <value>Scrolling capture help</value>
+  </data>
+  <data xml:space="preserve" name="ImagePreview">
+    <value>Screenshot preview</value>
+  </data>
+  <data xml:space="preserve" name="NoScreenshot">
+    <value>No screenshot yet</value>
+  </data>
+  <data xml:space="preserve" name="ChooseCapture">
+    <value>Choose a capture mode on the left</value>
+  </data>
+  <data xml:space="preserve" name="CopyImage">
+    <value>Copy image</value>
+  </data>
+  <data xml:space="preserve" name="SaveAs">
+    <value>Save as…</value>
+  </data>
+  <data xml:space="preserve" name="CaptureFailed">
+    <value>Capture failed: </value>
+  </data>
+  <data xml:space="preserve" name="ScrollTitle">
+    <value>SnapFlow - Scrolling capture</value>
+  </data>
+  <data xml:space="preserve" name="SingleScreenTitle">
+    <value>SnapFlow - No scrolling detected; one screen captured</value>
+  </data>
+  <data xml:space="preserve" name="SaveImage">
+    <value>Save image</value>
+  </data>
+  <data xml:space="preserve" name="OptionsReadFailed">
+    <value>Could not read capture options; using defaults: </value>
+  </data>
+  <data xml:space="preserve" name="OptionsSaveFailed">
+    <value>Could not save capture options: </value>
+  </data>
+  <data xml:space="preserve" name="PreferencesReadFailed">
+    <value>Could not read preferences; using defaults. Open Settings to save them again: </value>
+  </data>
+  <data xml:space="preserve" name="StartHint">
+    <value>Choose a capture mode on the left to begin</value>
+  </data>
+  <data xml:space="preserve" name="ShortcutConflictSuffix">
+    <value> shortcuts are unavailable. Change them in Settings, or use the capture buttons.</value>
+  </data>
+  <data xml:space="preserve" name="InvalidShortcutError">
+    <value>: invalid shortcut</value>
+  </data>
+  <data xml:space="preserve" name="DuplicateShortcutError">
+    <value>: the same shortcut is assigned more than once</value>
+  </data>
+  <data xml:space="preserve" name="SavePreferencesFailed">
+    <value>Could not save preferences; your previous settings are unchanged: </value>
+  </data>
+  <data xml:space="preserve" name="NoShortcut">
+    <value>No shortcut assigned</value>
+  </data>
+  <data xml:space="preserve" name="ShortcutUnavailable">
+    <value>Shortcut unavailable · Settings</value>
+  </data>
+  <data xml:space="preserve" name="CaptureTip">
+    <value>Drag a region or click a window
+Esc to cancel</value>
+  </data>
+  <data xml:space="preserve" name="SettingsDescription">
+    <value>Change shortcuts, appearance and motion. Also opens with Ctrl + comma.</value>
+  </data>
+  <data xml:space="preserve" name="NewCapture">
+    <value>New capture</value>
+  </data>
+  <data xml:space="preserve" name="Preview">
+    <value>Preview</value>
+  </data>
+  <data xml:space="preserve" name="Waiting">
+    <value>Waiting for a screenshot</value>
+  </data>
+  <data xml:space="preserve" name="Copy">
+    <value>Copy</value>
+  </data>
+  <data xml:space="preserve" name="Save">
+    <value>Save…</value>
+  </data>
+  <data xml:space="preserve" name="CaptureStatus">
+    <value>Capture status and shortcut availability</value>
+  </data>
+  <data xml:space="preserve" name="SaveReturn">
+    <value>Save and return</value>
+  </data>
+  <data xml:space="preserve" name="Cancel">
+    <value>Cancel</value>
+  </data>
+  <data xml:space="preserve" name="Motion">
+    <value>Interface animations</value>
+  </data>
+  <data xml:space="preserve" name="SettingsSubtitle">
+    <value>Shortcuts, appearance and language</value>
+  </data>
+  <data xml:space="preserve" name="Back">
+    <value>‹  Back to capture</value>
+  </data>
+  <data xml:space="preserve" name="Appearance">
+    <value>Appearance</value>
+  </data>
+  <data xml:space="preserve" name="AppearanceHint">
+    <value>Can follow your system theme</value>
+  </data>
+  <data xml:space="preserve" name="SystemTheme">
+    <value>System</value>
+  </data>
+  <data xml:space="preserve" name="Light">
+    <value>Light</value>
+  </data>
+  <data xml:space="preserve" name="Dark">
+    <value>Dark</value>
+  </data>
+  <data xml:space="preserve" name="AppearanceSuffix">
+    <value> appearance</value>
+  </data>
+  <data xml:space="preserve" name="AppearancePreview">
+    <value>Appearance previewed. Save to keep it; going back discards changes.</value>
+  </data>
+  <data xml:space="preserve" name="MotionHint">
+    <value>Transitions and feedback respect system motion settings</value>
+  </data>
+  <data xml:space="preserve" name="MotionPreview">
+    <value>Animation previewed. Save to keep this setting.</value>
+  </data>
+  <data xml:space="preserve" name="Shortcuts">
+    <value>Capture shortcuts</value>
+  </data>
+  <data xml:space="preserve" name="ShortcutsHint">
+    <value>Click a shortcut to change it</value>
+  </data>
+  <data xml:space="preserve" name="ShortcutSuffix">
+    <value> shortcut</value>
+  </data>
+  <data xml:space="preserve" name="Unsaved">
+    <value>You have unsaved changes. Going back discards them.</value>
+  </data>
+  <data xml:space="preserve" name="ClearPrefix">
+    <value>Clear </value>
+  </data>
+  <data xml:space="preserve" name="DisableDescription">
+    <value>Disable this shortcut; the capture button remains available</value>
+  </data>
+  <data xml:space="preserve" name="SupportedKeys">
+    <value>Ctrl / Alt combinations, F1–F24 and Print Screen are supported. Esc cancels.</value>
+  </data>
+  <data xml:space="preserve" name="Reset">
+    <value>Restore defaults</value>
+  </data>
+  <data xml:space="preserve" name="ResetFeedback">
+    <value>Defaults restored. Save to apply them.</value>
+  </data>
+  <data xml:space="preserve" name="SaveHint">
+    <value>Shortcuts are checked for conflicts when you save.</value>
+  </data>
+  <data xml:space="preserve" name="NotSaved">
+    <value>Not saved: </value>
+  </data>
+  <data xml:space="preserve" name="Unset">
+    <value>Not set</value>
+  </data>
+  <data xml:space="preserve" name="RecorderDescription">
+    <value>; click, then press a new shortcut</value>
+  </data>
+  <data xml:space="preserve" name="PressShortcut">
+    <value>Press a shortcut…</value>
+  </data>
+  <data xml:space="preserve" name="Language">
+    <value>Language</value>
+  </data>
+  <data xml:space="preserve" name="LanguageHint">
+    <value>Applies on save; missing translations use English</value>
+  </data>
+  <data xml:space="preserve" name="FollowWindows">
+    <value>Follow Windows</value>
+  </data>
+  <data xml:space="preserve" name="LanguageFeedback">
+    <value>The language changes when you save and return.</value>
+  </data>
+  <data xml:space="preserve" name="InvalidLanguage">
+    <value>Invalid language preference</value>
+  </data>
+  <data xml:space="preserve" name="Pixels">
+    <value>{0} × {1} pixels</value>
+  </data>
+  <data xml:space="preserve" name="ShortcutTaken">
+    <value>{0}: {1} is already in use or not permitted. Choose another shortcut.</value>
+  </data>
+  <data xml:space="preserve" name="ScreenshotFile">
+    <value>Screenshot_{0}.png</value>
+  </data>
+  <data name="ListSeparator" xml:space="preserve">
+    <value>, </value>
+  </data>
+  <data xml:space="preserve" name="Edit"><value>Edit</value></data>
+  <data xml:space="preserve" name="ApplyPreview"><value>Apply to preview</value></data>
+  <data xml:space="preserve" name="ExportImage"><value>Export image…</value></data>
+  <data xml:space="preserve" name="EditorFailed"><value>Unable to edit image: </value></data>
+  <data xml:space="preserve" name="CropImage"><value>Crop</value></data>
+  <data xml:space="preserve" name="EditorTools"><value>Annotation tools</value></data>
+  <data xml:space="preserve" name="EditorActions"><value>Image actions</value></data>
+  <data xml:space="preserve" name="ConfirmCrop"><value>Confirm crop</value></data>
+  <data xml:space="preserve" name="CropEdgesHint"><value>Drag the edges · Enter to confirm · Esc to cancel</value></data>
+  <data name="About" xml:space="preserve"><value>About</value></data>
+  <data name="AboutPurpose" xml:space="preserve"><value>Local screenshots and scrolling capture</value></data>
+  <data name="AboutOrigin" xml:space="preserve"><value>An unofficial derivative of ShareX 21.0.0, reusing and adapting its capture and image editing code.</value></data>
+  <data name="AboutLicense" xml:space="preserve"><value>Open-source license: GNU GPL version 3 or later.</value></data>
+  <data name="AboutUpstream" xml:space="preserve"><value>View source ↗</value></data>
+  <data name="AboutLicenseLink" xml:space="preserve"><value>View license</value></data>
+  <data name="AboutNoticeLink" xml:space="preserve"><value>Change notes</value></data>
+  <data name="OpenReferenceFailed" xml:space="preserve"><value>Unable to open: {0}</value></data>
+  <data xml:space="preserve" name="AnnotationColor"><value>Color</value></data>
+  <data xml:space="preserve" name="AnnotationCustomColor"><value>Custom color…</value></data>
+  <data xml:space="preserve" name="AnnotationFill"><value>Fill</value></data>
+  <data xml:space="preserve" name="EditorMoreTools"><value>More tools</value></data>
+  <data xml:space="preserve" name="AnnotationDeleteHint"><value>Right-click an annotation to delete it.</value></data>
+  <data xml:space="preserve" name="PreviewZoomControls">
+    <value>Image zoom</value>
+  </data>
+  <data xml:space="preserve" name="PreviewZoomOut">
+    <value>Zoom out</value>
+  </data>
+  <data xml:space="preserve" name="PreviewZoomIn">
+    <value>Zoom in</value>
+  </data>
+  <data xml:space="preserve" name="PreviewZoomScale">
+    <value>Zoom</value>
+  </data>
+  <data xml:space="preserve" name="PreviewFitImage">
+    <value>Fit image</value>
+  </data>
+  <data xml:space="preserve" name="PreviewFitWidth">
+    <value>Fit width</value>
+  </data>
+  <data xml:space="preserve" name="PreviewZoomHelp">
+    <value>Wheel to zoom · Drag to pan · 0 to fit image</value>
+  </data>
+  <data xml:space="preserve" name="PreviewReadingHelp">
+    <value>Wheel to read · Ctrl+wheel to zoom · Page Up/Down to turn pages</value>
+  </data>
+</root>

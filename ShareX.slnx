@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="src/ShareX.Roll/ShareX.Roll.csproj" />
+  <Project Path="src/ShareX.HelpersLib/ShareX.HelpersLib.csproj" />
+  <Project Path="src/ShareX.ImageEffectsLib/ShareX.ImageEffectsLib.csproj" />
+  <Project Path="src/ShareX.ScreenCaptureLib/ShareX.ScreenCaptureLib.csproj" />
+  <Project Path="src/ShareX.Roll.Tests/ShareX.Roll.Tests.csproj" />
+</Solution>

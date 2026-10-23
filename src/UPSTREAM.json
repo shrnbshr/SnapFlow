@@ -1,0 +1,31 @@
+{
+  "SourceUrl": "https://github.com/ShareX/ShareX/tree/v21.0.0",
+  "ProjectChange": "ScreenCaptureLib no longer references MediaLib",
+  "SourceArchiveSha256": "E5C4AEF36210B20DD189C9F7474A1D6ECACCB2061F8F7AE0D88909BF40197299",
+  "Tag": "v21.0.0",
+  "Excluded": [
+    "ShareX.ScreenCaptureLib/ScreenRecording",
+    "ShareX.ScreenCaptureLib/Forms/ScreenRecordForm.*",
+    "ShareX.ScreenCaptureLib/Forms/FFmpegOptionsForm.*"
+  ],
+  "UnchangedLibraryFiles": 1196,
+  "ModifiedLibraryFiles": [
+    "ShareX.ScreenCaptureLib/Forms/ScrollingCaptureForm.cs",
+    "ShareX.ScreenCaptureLib/ScrollingCaptureManager.cs",
+    "ShareX.ScreenCaptureLib/Forms/RegionCaptureForm.cs",
+    "ShareX.ScreenCaptureLib/Shapes/ShapeManagerMenu.cs",
+    "ShareX.HelpersLib/Helpers/ImageHelpers.cs",
+    "ShareX.ScreenCaptureLib/RegionCaptureOptions.cs",
+    "ShareX.ScreenCaptureLib/Shapes/ShapeManager.cs",
+    "ShareX.ScreenCaptureLib/Shapes/Tool/CropTool.cs",
+    "ShareX.ScreenCaptureLib/Helpers/ImageEditorButton.cs",
+    "ShareX.ScreenCaptureLib/Helpers/ResizeNode.cs",
+    "ShareX.ScreenCaptureLib/Helpers/ImageEditorScrollbar.cs"
+  ],
+  "AddedLibraryFiles": [
+    "ShareX.HelpersLib/Helpers/ScrollableWindowRegion.cs"
+  ],
+  "ModificationReason": "Anchor wheel input; retry unchanged frames; classify zero movement; register host lifecycle handlers before showing the capture window; refine browser selections to the innermost scrollable accessibility document. Keep the upstream row-search loop, adding bounded 15%/25% side-margin retries and an upper-overlap join for fixed controls. Expose opt-in capture completion and selection cancellation events so the host can own the preview without showing the standalone result window. Native selector and screenshot code remain upstream. Reuse the bundled image editor with an optional toolbar host event and stable action names; allow an owner for the existing multi-format save dialog and return a path only after a successful write. The crop, undo/redo and encoder implementations remain upstream. Add an opt-in annotation/manual-crop editor profile that prevents selecting cut-out or capture-region tools and blocks capture-only keyboard shortcuts. Stable menu names let the host remove whole-image and advanced-option entries while retaining annotation style and object-editing controls. Default library behavior and capture modes remain unchanged. Add an opt-in boundary-crop interaction: initialize the crop at the full image edges, resize with existing handles, prevent replacement rectangle drawing, confirm with Enter/apply and cancel with Escape. Keep crop handles and confirmation controls at usable screen sizes and reserve a fit margin. Bitmap cropping and image encoding remain upstream. Add opt-in native two-row editor chrome, toolbar crop confirmation and state/feedback notifications. Refresh the canvas on input rather than continuously while idle, retaining a frame clock during gestures and keyboard movement. Host-only vector tool icons and cancellable toolbar feedback reuse native command handlers. Cropping, history and image encoders remain unchanged. Allow the opt-in editor to fit long screenshots below 20 percent, reserve toolbar space before fitting, refit pending crop on resize and crop-tool activation, and avoid scaling scrollbar bounds twice. Replace crop-only adorners with solid accent borders, dimmed excluded pixels and larger orientation-specific hit targets; keep height handles available on narrow long images. Crop bitmap extraction, annotation rendering, history and encoders remain upstream. Expose annotation color access and the existing custom picker to the host. Keep a quick color menu directly visible; map text, step and highlight colors to their native options, and record a shapes memento before changing a selected annotation. Rendering and undo/redo continue to use the upstream implementations.",
+  "ApplicationName": "SnapFlow",
+  "PreviousApplicationName": "ShareX - roll"
+}
