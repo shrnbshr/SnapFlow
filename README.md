@@ -36,9 +36,9 @@
 
 ## 下载与运行
 
-在 [最新 Release](https://github.com/shrnbshr/SnapFlow/releases/latest) 中查看版本说明并下载：
+通过下方链接下载最新版本，更新内容见 [发行说明](https://github.com/shrnbshr/SnapFlow/releases/latest)。
 
-- [Windows x64 安装版（推荐）](https://github.com/shrnbshr/SnapFlow/releases/latest)：选择 `SnapFlow-<版本>-setup-x64.exe`。
+- [Windows x64 安装版（推荐）](https://github.com/shrnbshr/SnapFlow/releases/latest/download/SnapFlow-setup-x64.exe)
 - [Windows x64 便携版](https://github.com/shrnbshr/SnapFlow/releases/latest/download/SnapFlow-win-x64.zip)
 - [对应版本源码包](https://github.com/shrnbshr/SnapFlow/releases/latest/download/SnapFlow-source.zip)
 
