@@ -38,12 +38,13 @@
 
 在 [最新 Release](https://github.com/shrnbshr/SnapFlow/releases/latest) 中查看版本说明并下载：
 
+- [Windows x64 安装版（推荐）](https://github.com/shrnbshr/SnapFlow/releases/latest)：选择 `SnapFlow-<版本>-setup-x64.exe`。
 - [Windows x64 便携版](https://github.com/shrnbshr/SnapFlow/releases/latest/download/SnapFlow-win-x64.zip)
 - [对应版本源码包](https://github.com/shrnbshr/SnapFlow/releases/latest/download/SnapFlow-source.zip)
 
-完整解压便携包，运行其中的 `SnapFlow.exe`，并保留同目录的 DLL 和语言资源。建议解压到具有写入权限的目录，以便保存设置。
+安装版按提示完成安装后即可使用。便携版完整解压后，运行其中的 `SnapFlow.exe`，并保留同目录的 DLL 和语言资源。建议将便携版解压到具有写入权限的目录，以便保存设置。
 
-当前构建面向 **Windows x64**，需要 **.NET 9 Desktop Runtime**。不同发行版本的运行要求以对应 Release 的说明为准。
+两种版本均面向 **Windows x64**。安装版内置 .NET 运行时，无需单独安装；便携版需要 **.NET 9 Desktop Runtime**。不同发行版本的运行要求以对应 Release 的说明为准。
 
 ## 使用
 
