@@ -1,4 +1,4 @@
-param([string]$InstallerPath = 'dist/SnapFlow-1.1.0-setup-x64.exe')
+param([string]$InstallerPath = 'dist/SnapFlow-setup-x64.exe')
 $ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath (Split-Path -Parent $PSScriptRoot)
 $taskRoot = $PWD.Path

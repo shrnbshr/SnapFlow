@@ -104,6 +104,7 @@ public sealed partial class MainForm
 
     private string? TrySaveSettings(ApplicationPreferences candidate, ScrollingCaptureOptions? scrollingCandidate)
     {
+        if (candidate.ValidateSaveFolder() is string folderError) return folderError;
         List<string> errors = new();
         foreach (CaptureShortcut action in ApplicationPreferences.Actions)
         {

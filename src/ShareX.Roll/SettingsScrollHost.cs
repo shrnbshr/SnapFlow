@@ -75,6 +75,7 @@ internal sealed class SettingsScrollHost : Panel
     internal void ScrollWheel(int delta)
     {
         if (delta == 0) return;
+        bar.FinishGeometry();
         if (!motion.Enabled && Offset != lastWritten) StopMotion();
         int lines = SystemInformation.MouseWheelScrollLines;
         if (lines == 0 || Maximum == 0) { StopMotion(); return; }
@@ -205,11 +206,13 @@ internal sealed class SettingsScrollHost : Panel
             }
             bar.Bounds = new Rectangle(clip.Right, 0, gutter, ClientSize.Height);
             bar.Visible = viewport.VerticalScroll.Visible;
-            if (lastMaximum != Maximum)
+            bool rangeChanged = lastMaximum != Maximum;
+            if (rangeChanged)
             {
                 StopMotion();
                 lastMaximum = Maximum;
             }
+            bar.SynchronizeThumb(rangeChanged);
             bar.Invalidate();
         }
         finally { arranging = false; }
@@ -222,6 +225,10 @@ internal sealed class SettingsScrollHost : Panel
         private bool hovering;
         private bool dragging;
         private float dragOffset;
+        private readonly UiTween geometry;
+        private RectangleF beforeGeometry, targetGeometry;
+        private bool geometryReady;
+        private int previousTrackHeight;
         internal CapturePalette Palette { get; set; } = CapturePalette.Light;
         private int Offset => host.Offset;
         private int Maximum => host.Maximum;
@@ -230,6 +237,7 @@ internal sealed class SettingsScrollHost : Panel
         internal SettingsScrollBar(SettingsScrollHost host)
         {
             this.host = host;
+            geometry = new UiTween(this, Invalidate);
             TabStop = true;
             AccessibleRole = AccessibleRole.ScrollBar;
             SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
@@ -237,7 +245,7 @@ internal sealed class SettingsScrollHost : Panel
         }
 
         private Rectangle Track => new(0, Scale(4), Width, Math.Max(0, Height - Scale(8)));
-        private RectangleF Thumb
+        private RectangleF NativeThumb
         {
             get
             {
@@ -249,9 +257,53 @@ internal sealed class SettingsScrollHost : Panel
             }
         }
 
+        private RectangleF Thumb
+        {
+            get
+            {
+                if (!geometry.IsRunning) return NativeThumb;
+                float progress = geometry.Value;
+                float height = beforeGeometry.Height + (targetGeometry.Height-beforeGeometry.Height)*progress;
+                // Keep native focus/scroll changes authoritative during resizing too. At the bottom,
+                // this also anchors the changing thumb to the bottom instead of detaching from it.
+                float y = Track.Top + (float)((Track.Height-height)*host.position/Math.Max(1,Maximum));
+                return new RectangleF(0,y,Width,height);
+            }
+        }
+
+        internal void SynchronizeThumb(bool rangeChanged)
+        {
+            RectangleF destination = NativeThumb;
+            bool sameTrack = previousTrackHeight == Height;
+            previousTrackHeight = Height;
+            if (geometryReady && sameTrack && rangeChanged && Visible && !dragging && UiMotion.Enabled)
+            {
+                RectangleF current = geometry.IsRunning ? Thumb : targetGeometry;
+                beforeGeometry = current;
+                targetGeometry = destination;
+                geometry.SnapTo(0);
+                if (current == destination) geometry.SnapTo(1);
+                else geometry.AnimateTo(1, 200);
+            }
+            else if (!geometryReady || !sameTrack || !geometry.IsRunning || destination != targetGeometry || !UiMotion.Enabled)
+            {
+                targetGeometry = beforeGeometry = destination;
+                geometry.SnapTo(1);
+            }
+            geometryReady = true;
+        }
+
+        internal void FinishGeometry()
+        {
+            targetGeometry = beforeGeometry = NativeThumb;
+            geometry.SnapTo(1);
+        }
+
         private void ScrollTo(double value)
         {
+            FinishGeometry();
             host.ScrollTo(value);
+            targetGeometry = beforeGeometry = NativeThumb;
             NotifyValueChanged();
         }
 
@@ -261,6 +313,7 @@ internal sealed class SettingsScrollHost : Panel
         {
             base.OnPaint(e);
             RectangleF thumb = Thumb;
+            if (!geometry.IsRunning) targetGeometry = beforeGeometry = thumb;
             if (Maximum == 0 || thumb.Height == 0) return;
             int width = Scale(hovering || dragging || Focused ? 8 : 6);
             RectangleF shape = new((Width - width) / 2f, thumb.Top, width, thumb.Height);
@@ -286,12 +339,14 @@ internal sealed class SettingsScrollHost : Panel
         {
             base.OnMouseDown(e);
             if (e.Button != MouseButtons.Left || Maximum == 0) return;
+            RectangleF visibleThumb = Thumb;
+            FinishGeometry();
             host.StopMotion();
             Focus();
             RectangleF thumb = Thumb;
-            if (thumb.Contains(e.Location))
+            if (visibleThumb.Contains(e.Location))
             {
-                dragOffset = e.Y - thumb.Top;
+                dragOffset = Math.Clamp((e.Y-visibleThumb.Top)/Math.Max(1,visibleThumb.Height),0,1)*thumb.Height;
                 dragging = true;
                 Capture = true;
                 Invalidate();
@@ -323,6 +378,7 @@ internal sealed class SettingsScrollHost : Panel
         protected override void OnMouseWheel(MouseEventArgs e)
         {
             base.OnMouseWheel(e);
+            FinishGeometry();
             if (e is HandledMouseEventArgs handled) handled.Handled = true;
             host.ScrollWheel(e.Delta);
         }

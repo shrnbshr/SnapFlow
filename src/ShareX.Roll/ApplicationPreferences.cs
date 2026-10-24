@@ -22,11 +22,21 @@ internal sealed class ApplicationPreferences
     public AppearanceMode Appearance { get; set; } = AppearanceMode.System;
     public bool AnimationsEnabled { get; set; } = true;
     public LanguageMode Language { get; set; } = LanguageMode.System;
+    public bool UseDefaultSaveFolder { get; set; }
+    public string DefaultSaveFolder { get; set; } = "";
     [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
     public Dictionary<string, Keys> Shortcuts { get; set; } = Actions.ToDictionary(
         action => action.Kind, action => Keys.Control | Keys.Shift | action.ModeKey);
 
-    internal ApplicationPreferences Clone() => new() { Appearance = Appearance, AnimationsEnabled = AnimationsEnabled, Language = Language, Shortcuts = new(Shortcuts) };
+    internal ApplicationPreferences Clone() => new()
+    {
+        Appearance = Appearance, AnimationsEnabled = AnimationsEnabled, Language = Language,
+        UseDefaultSaveFolder = UseDefaultSaveFolder, DefaultSaveFolder = DefaultSaveFolder, Shortcuts = new(Shortcuts)
+    };
+
+    internal string? ValidateSaveFolder() => UseDefaultSaveFolder &&
+        (string.IsNullOrWhiteSpace(DefaultSaveFolder) || !Path.IsPathFullyQualified(DefaultSaveFolder) || !Directory.Exists(DefaultSaveFolder))
+        ? L("SaveFolderInvalid") : null;
 
     internal static bool IsSupported(Keys keys)
     {
@@ -45,6 +55,7 @@ internal sealed class ApplicationPreferences
             ? JsonConvert.DeserializeObject<ApplicationPreferences>(File.ReadAllText(path)) ?? throw new JsonException(L("EmptySettings"))
             : new();
         if (!Enum.IsDefined(value.Appearance) || value.Shortcuts == null) throw new JsonException(L("InvalidSettings"));
+        value.DefaultSaveFolder ??= "";
         // Migrate retired language IDs without discarding shortcuts, theme or motion preferences.
         if ((int)value.Language is >= 4 and <= 24) value.Language = LanguageMode.System;
         else if (!Enum.IsDefined(value.Language)) throw new JsonException(L("InvalidLanguage"));

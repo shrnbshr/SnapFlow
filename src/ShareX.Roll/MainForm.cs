@@ -150,7 +150,7 @@ public sealed partial class MainForm : HotkeyForm
         ReleaseCaptureHotkeys();
         try
         {
-            using RegionCaptureForm dialog = ScreenshotEditor.Create(result, appearancePalette);
+            using RegionCaptureForm dialog = ScreenshotEditor.Create(result, appearancePalette, preferences);
             editorForm = dialog;
             dialog.ShowDialog(this);
             // Enter is the upstream editor's keyboard equivalent of the apply button.
@@ -173,7 +173,8 @@ public sealed partial class MainForm : HotkeyForm
         }
     }
 
-    private static void SaveImage(Bitmap bitmap) => ImageHelpers.SaveImageFileDialog(bitmap, LF("ScreenshotFile", DateTime.Now.ToString("yyyyMMdd_HHmmss")));
+    private void SaveImage(Bitmap bitmap) => ScreenshotSaveDialog.Save(bitmap, preferences,
+        LF("ScreenshotFile", DateTime.Now.ToString("yyyyMMdd_HHmmss")), Visible ? this : scrollForm);
 
     private ScrollingCaptureOptions LoadOptions()
     {

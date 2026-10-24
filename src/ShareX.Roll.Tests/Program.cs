@@ -14,6 +14,7 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        if (args.Contains("--save-location-child")) return SaveLocationRegression.ReadAfterRestart(args[^1]);
         if (args.Contains("--stitch-regression"))
         {
             try { StitchingRegression.Run(); return 0; }
@@ -29,7 +30,10 @@ internal static class Program
         {
             try
             {
-                if (args.Contains("--settings-scroll-motion")) await SettingsScrollMotionRegression.RunAsync(main, args.Contains("--baseline"), args.Contains("--record-scroll"));
+                if (args.Contains("--save-folder-presentation")) await SaveFolderPresentationRegression.RunAsync(main, args.Contains("--baseline"));
+                else if (args.Contains("--save-location-visual")) await SaveLocationRegression.RunVisualAsync(main, args.Contains("--baseline"));
+                else if (args.Contains("--save-location")) await SaveLocationRegression.RunAsync(main);
+                else if (args.Contains("--settings-scroll-motion")) await SettingsScrollMotionRegression.RunAsync(main, args.Contains("--baseline"), args.Contains("--record-scroll"));
                 else if (args.Contains("--preview-zoom")) await PreviewZoomRegression.RunAsync(main);
                 else if (args.Contains("--settings-live-painting")) await SettingsLivePaintingRegression.RunAsync(main);
                 else if (args.Contains("--settings-polish")) await SettingsPolishRegression.RunAsync(main);

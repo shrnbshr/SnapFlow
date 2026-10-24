@@ -7,7 +7,7 @@ namespace ShareX.Roll;
 
 internal static class ScreenshotEditor
 {
-    internal static RegionCaptureForm Create(Bitmap source, CapturePalette palette)
+    internal static RegionCaptureForm Create(Bitmap source, CapturePalette palette, ApplicationPreferences? preferences = null)
     {
         RegionCaptureOptions options = new()
         {
@@ -44,8 +44,8 @@ internal static class ScreenshotEditor
         }
         editor.TextChanged += (_, _) => UpdateTitle();
         UpdateTitle();
-        editor.SaveImageRequested += (image, path) => Save(editor, image, path, false);
-        editor.SaveImageAsRequested += (image, path) => Save(editor, image, path, true);
+        editor.SaveImageRequested += (image, path) => Save(editor, image, path, false, preferences);
+        editor.SaveImageAsRequested += (image, path) => Save(editor, image, path, true, preferences);
         editor.CopyImageRequested += image => ClipboardHelpers.CopyImage(image);
         List<ToolStripItem> removedItems = new();
         // ShareX retains references to menu controls for state updates; dispose them with the editor.
@@ -94,16 +94,16 @@ internal static class ScreenshotEditor
         item.AccessibleName = text;
     }
 
-    private static string Save(RegionCaptureForm editor, Bitmap image, string? path, bool saveAs)
+    private static string Save(RegionCaptureForm editor, Bitmap image, string? path, bool saveAs, ApplicationPreferences? preferences)
     {
         // ShareX transfers save-callback bitmap ownership to the host (copy callbacks are borrowed).
         using (image)
         {
             if (!saveAs && !string.IsNullOrEmpty(path))
                 return ImageHelpers.SaveImage(image, path) ? path : null!;
-            return ImageHelpers.SaveImageFileDialog(image,
+            return ScreenshotSaveDialog.Save(image, preferences ?? new(),
                 string.IsNullOrEmpty(path) ? LF("ScreenshotFile", DateTime.Now.ToString("yyyyMMdd_HHmmss")) : path,
-                owner: editor);
+                owner: editor)!;
         }
     }
 }

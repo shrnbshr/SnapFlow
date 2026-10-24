@@ -7,8 +7,8 @@
     <AssemblyName>SnapFlow</AssemblyName>
     <Product>SnapFlow</Product>
     <AssemblyTitle>SnapFlow</AssemblyTitle>
-    <Version>1.1.0</Version>
-    <FileVersion>1.1.0.0</FileVersion>
+    <Version>1.2.0</Version>
+    <FileVersion>1.2.0.0</FileVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <ApplicationIcon>Assets\SnapFlow.ico</ApplicationIcon>
     <ImplicitUsings>enable</ImplicitUsings>

@@ -128,7 +128,7 @@ Esc to cancel</value>
     <value>Interface animations</value>
   </data>
   <data xml:space="preserve" name="SettingsSubtitle">
-    <value>Shortcuts, appearance and language</value>
+    <value>Appearance, saving and capture preferences</value>
   </data>
   <data xml:space="preserve" name="Back">
     <value>‹  Back to capture</value>
@@ -278,4 +278,14 @@ Esc to cancel</value>
   <data xml:space="preserve" name="PreviewReadingHelp">
     <value>Wheel to read · Ctrl+wheel to zoom · Page Up/Down to turn pages</value>
   </data>
+  <data xml:space="preserve" name="Saving"><value>Capture and saving</value></data>
+  <data xml:space="preserve" name="DefaultSaveFolder"><value>Choose where the save window opens</value></data>
+  <data xml:space="preserve" name="DefaultSaveFolderHint"><value>Open this folder when saving. You still choose a filename and confirm each save.</value></data>
+  <data xml:space="preserve" name="SaveFolderPath"><value>Default save-window folder</value></data>
+  <data xml:space="preserve" name="ChooseSaveFolder"><value>Choose a folder for the save window</value></data>
+  <data xml:space="preserve" name="BrowseSaveFolder"><value>Browse…</value></data>
+  <data xml:space="preserve" name="SaveFolderInvalid"><value>Choose an existing folder, or turn off the default save-window folder.</value></data>
+  <data xml:space="preserve" name="SaveScreenshot"><value>Save screenshot</value></data>
+  <data xml:space="preserve" name="SaveFolderUnavailableTitle"><value>Default folder unavailable — choose another folder to save</value></data>
+  <data xml:space="preserve" name="NoSaveFolderSelected"><value>No folder selected</value></data>
 </root>

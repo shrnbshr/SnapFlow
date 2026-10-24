@@ -128,7 +128,7 @@
     <value>介面動畫</value>
   </data>
   <data xml:space="preserve" name="SettingsSubtitle">
-    <value>快捷鍵、外觀與語言</value>
+    <value>外觀、儲存位置與擷取偏好</value>
   </data>
   <data xml:space="preserve" name="Back">
     <value>‹  返回截圖</value>
@@ -278,4 +278,14 @@
   <data xml:space="preserve" name="PreviewReadingHelp">
     <value>滾輪上下閱讀 · Ctrl＋滾輪縮放 · Page Up/Down 翻頁</value>
   </data>
+  <data xml:space="preserve" name="Saving"><value>擷取與儲存</value></data>
+  <data xml:space="preserve" name="DefaultSaveFolder"><value>指定儲存視窗的預設資料夾</value></data>
+  <data xml:space="preserve" name="DefaultSaveFolderHint"><value>按下儲存時先開啟此資料夾，仍需手動確認儲存。</value></data>
+  <data xml:space="preserve" name="SaveFolderPath"><value>儲存視窗預設資料夾</value></data>
+  <data xml:space="preserve" name="ChooseSaveFolder"><value>選擇儲存視窗預設開啟的資料夾</value></data>
+  <data xml:space="preserve" name="BrowseSaveFolder"><value>瀏覽…</value></data>
+  <data xml:space="preserve" name="SaveFolderInvalid"><value>請選擇一個現存的資料夾，或關閉指定預設資料夾。</value></data>
+  <data xml:space="preserve" name="SaveScreenshot"><value>儲存擷取畫面</value></data>
+  <data xml:space="preserve" name="SaveFolderUnavailableTitle"><value>預設資料夾無法使用，請選擇其他資料夾儲存</value></data>
+  <data xml:space="preserve" name="NoSaveFolderSelected"><value>未選擇資料夾</value></data>
 </root>

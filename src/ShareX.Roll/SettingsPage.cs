@@ -15,6 +15,7 @@ internal sealed class SettingsPage : UserControl
     private readonly Func<ApplicationPreferences, ScrollingCaptureOptions, string?> savePreferences;
     private readonly ScrollingOptionsEditor scrollingEditor;
     private readonly SettingsReveal scrollingReveal;
+    private readonly SaveLocationOptions saveLocation;
     private readonly Dictionary<string, ShortcutRecorder> recorders = new();
     private readonly Dictionary<AppearanceMode, ThemeOption> themes = new();
     private readonly TableLayoutPanel layout = new();
@@ -135,6 +136,10 @@ internal sealed class SettingsPage : UserControl
         languageRow.Controls.Add(languageCaption, 0, 0);
         languageRow.Controls.Add(language, 1, 0);
         Add(languageRow);
+        Add(SectionHeading(L("Saving"), ""));
+        saveLocation = new SaveLocationOptions(draft) { Dock = DockStyle.Top, Margin = new Padding(0, 0, 0, 24) };
+        saveLocation.Changed += (_, _) => ShowFeedback(L("Unsaved"));
+        Add(saveLocation);
         SettingsGroup scrollingRow = new() { Name = "scrollingOptionsRow", DrawDividers = false, Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, RowCount = 2, Padding = new Padding(14, 9, 14, 9), Margin = new Padding(0, 0, 0, 24) };
         scrollingRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         scrollingRow.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
@@ -222,6 +227,7 @@ internal sealed class SettingsPage : UserControl
             themes[defaults.Appearance].Checked = true;
             motion.Checked = defaults.AnimationsEnabled;
             language.SelectedItem = UiLanguage.Options.Single(option => option.Mode == defaults.Language);
+            saveLocation.LoadPreferences(defaults);
             scrollingEditor.LoadOptions(new ScrollingCaptureOptions());
             ShowFeedback(L("ResetFeedback"));
         };
@@ -269,6 +275,12 @@ internal sealed class SettingsPage : UserControl
 
     private void SaveAndReturn()
     {
+        if (draft.ValidateSaveFolder() is string folderError)
+        {
+            ShowFeedback(L("NotSaved") + folderError);
+            saveLocation.FocusFolder();
+            return;
+        }
         string? error = savePreferences(draft.Clone(), scrollingEditor.ReadOptions());
         if (error != null) { ShowFeedback(L("NotSaved") + error); return; }
         ReturnRequested?.Invoke(this, EventArgs.Empty);
@@ -291,6 +303,7 @@ internal sealed class SettingsPage : UserControl
             control.BackColor = background;
             control.ForeColor = Equals(control.Tag, "secondary") ? palette.Secondary : palette.Text;
             if (control.Name == "aboutDivider") control.BackColor = palette.Border;
+            if (control is SettingsFolderField folderField) { folderField.ApplyPalette(palette); return; }
             if (control is SettingsNumberField number) { number.ApplyPalette(palette); return; }
             if (control is SettingsChoice choice) { choice.ApplyPalette(palette); return; }
             if (control is AboutLinkButton aboutLink) { aboutLink.ApplyPalette(palette); return; }
