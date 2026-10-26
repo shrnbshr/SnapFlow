@@ -115,7 +115,8 @@ internal sealed class PreviewZoomFade : Control
             dirty = false;
         }
         GraphicsState state = e.Graphics.Save();
-        if (toolbar.Region != null) e.Graphics.SetClip(toolbar.Region, CombineMode.Intersect);
+        // The snapshot already blends the rounded material edge into the current preview.
+        // A native region clip here would reintroduce a hard, jagged edge during the fade.
         alpha.Matrix33 = opacity.Value;
         blend.SetColorMatrix(alpha);
         e.Graphics.DrawImage(snapshot, ClientRectangle, 0, 0, Width, Height, GraphicsUnit.Pixel, blend);

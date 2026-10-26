@@ -191,7 +191,8 @@ internal static class SaveLocationRegression
                     Check(!viewport.HorizontalScroll.Visible, $"{mode}/{compact}: settings fit without a horizontal scrollbar");
                     Control path = Find<Control>(page, "defaultSaveFolderPath");
                     Control browse = Find<Control>(page, "browseSaveFolderButton");
-                    Check(browse.MinimumSize.Width == 100 * main.DeviceDpi / 96,
+                    Check(browse.Height == 64 * main.DeviceDpi / 96 &&
+                        ButtonElevation.FaceBounds(browse.ClientSize, main.DeviceDpi / 96f).Height == 40 * main.DeviceDpi / 96,
                         $"{mode}/{compact}: folder controls scale once with the display DPI");
                     Check(path.Width > 100 * main.DeviceDpi / 96f && browse.Right <= browse.Parent!.ClientSize.Width, $"{mode}/{compact}: long paths retain room for the browse action");
                     Check(path.AccessibleName != null && Find<CheckBox>(page, "defaultSaveFolderToggle").AccessibleDescription != null,

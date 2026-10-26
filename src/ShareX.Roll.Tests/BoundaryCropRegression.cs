@@ -16,7 +16,7 @@ internal static class BoundaryCropRegression
         if (!value) throw new InvalidOperationException(message);
         Console.WriteLine("PASS: " + message);
     }
-    private static ToolStrip Toolbar(RegionCaptureForm editor) => editor.OwnedForms.SelectMany(f => f.Controls.OfType<ToolStrip>()).Single();
+    private static ToolStrip Toolbar(RegionCaptureForm editor) => EditorRegression.Tools(editor);
     private static CropTool Crop(object manager) => (CropTool)Property(manager, "CurrentShape");
     private static bool SameArea(RectangleF a, RectangleF b) => Math.Abs(a.X - b.X) < .01f && Math.Abs(a.Y - b.Y) < .01f &&
         Math.Abs(a.Width - b.Width) < .01f && Math.Abs(a.Height - b.Height) < .01f;

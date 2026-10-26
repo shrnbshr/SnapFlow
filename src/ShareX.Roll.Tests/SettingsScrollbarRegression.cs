@@ -128,6 +128,6 @@ internal static class SettingsScrollbarRegression
         viewport.PerformLayout();
         host.PerformLayout();
         Check(!bar.Visible && viewport.Width == host.Width, "scrollbar disappears and releases its gutter when content fits");
-        Find<Button>(page, "backToCaptureButton").PerformClick();
+        Find<Button>(page, "cancelSettingsButton").PerformClick();
     }
 }

@@ -9,7 +9,7 @@ internal static class AnnotationRegression
     private const BindingFlags Members = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
     private static object Property(object value, string name) => value.GetType().GetProperty(name, Members)!.GetValue(value)!;
     private static object Field(object value, string name) => value.GetType().GetField(name, Members)!.GetValue(value)!;
-    private static ToolStrip Tools(RegionCaptureForm editor) => editor.OwnedForms.SelectMany(form => form.Controls.OfType<ToolStrip>()).Single();
+    private static ToolStrip Tools(RegionCaptureForm editor) => EditorRegression.Tools(editor);
     private static void Check(bool condition, string message)
     {
         Console.WriteLine((condition ? "PASS: " : "FAIL: ") + message);
@@ -35,9 +35,11 @@ internal static class AnnotationRegression
             try
             {
                 await Task.Delay(250);
+                // Opening starts in crop mode; annotation controls become available when that mode ends.
+                if (editor.IsEditorCropPending) editor.CancelEditorCrop();
                 object manager = Property(editor, "ShapeManager");
                 ToolStripDropDownButton palette = Palette(editor);
-                Check(palette.Placement == ToolStripItemPlacement.Main && palette.Enabled, "color picker is directly visible when opening the editor");
+                Check(palette.Placement == ToolStripItemPlacement.Main && palette.Enabled, "color picker is directly visible after leaving the initial crop mode");
                 foreach (ShapeType type in new[] { ShapeType.DrawingFreehand, ShapeType.DrawingRectangle, ShapeType.DrawingEllipse,
                     ShapeType.DrawingLine, ShapeType.DrawingArrow, ShapeType.DrawingTextOutline, ShapeType.DrawingTextBackground,
                     ShapeType.DrawingSpeechBalloon, ShapeType.DrawingStep, ShapeType.EffectHighlight })

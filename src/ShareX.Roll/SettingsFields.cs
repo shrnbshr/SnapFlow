@@ -72,7 +72,7 @@ internal sealed class SettingsNumberField : Control
     {
         this.number = number;
         Name = number.Name + "Field";
-        Size = new Size(120, 34);
+        Size = new Size(132, ButtonSpacing.FieldHeight);
         TabStop = false;
         SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
         number.BorderStyle = BorderStyle.None;
@@ -104,7 +104,7 @@ internal sealed class SettingsNumberField : Control
     {
         base.OnLayout(e);
         if (number == null) return;
-        int inset = Scale(10), stepper = Scale(28);
+        int inset = Scale(ButtonSpacing.Horizontal), stepper = Scale(28);
         number.Bounds = new Rectangle(inset, (Height - number.PreferredHeight) / 2,
             Math.Max(1, Width - inset - stepper - Scale(5)), number.PreferredHeight);
         ArrangeEdit();
@@ -140,7 +140,7 @@ internal sealed class SettingsNumberField : Control
         using SolidBrush fill = new(palette.Canvas);
         using Pen edge = new(number.ContainsFocus ? palette.Accent : palette.Border, (number.ContainsFocus ? 1.5f : 1) * s);
         g.FillPath(fill, shape);
-        g.DrawPath(edge, shape);
+        if (number.ContainsFocus || SystemInformation.HighContrast) g.DrawPath(edge, shape);
         float x = Width - 15 * s;
         using Pen arrow = new(hovering || pressed != 0 ? palette.Text : palette.Secondary, 1.4f * s) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
         float top = Height / 2f - 5 * s, bottom = Height / 2f + 5 * s;
@@ -186,23 +186,23 @@ internal sealed class SettingsChoice : ComboBox
     private static extern bool EndPaint(IntPtr window, ref PaintData data);
     private CapturePalette palette = CapturePalette.Light;
     private ToolStripDropDownMenu? menu;
-    private UiTween? menuReveal;
+    private Func<bool>? transparencyEnabled;
     private bool hovering;
-    internal bool MenuAnimating => menuReveal?.IsRunning == true;
 
     internal SettingsChoice()
     {
         DropDownStyle = ComboBoxStyle.DropDownList;
         FlatStyle = FlatStyle.Flat;
         DrawMode = DrawMode.OwnerDrawFixed;
-        ItemHeight = (int)Math.Round(26 * DeviceDpi / 96f);
+        ItemHeight = (int)Math.Round(32 * DeviceDpi / 96f);
         Cursor = Cursors.Hand;
     }
 
-    internal void ApplyPalette(CapturePalette value)
+    internal void ApplyPalette(CapturePalette value, Func<bool>? transparencyEnabled = null)
     {
         CloseMenu();
         palette = value;
+        this.transparencyEnabled = transparencyEnabled;
         BackColor = value.Canvas;
         ForeColor = value.Text;
         Invalidate();
@@ -211,15 +211,36 @@ internal sealed class SettingsChoice : ComboBox
     protected override void OnDpiChangedAfterParent(EventArgs e)
     {
         base.OnDpiChangedAfterParent(e);
-        ItemHeight = (int)Math.Round(26 * DeviceDpi / 96f);
-        Parent?.PerformLayout();
+        SizeField();
         Invalidate();
     }
 
     protected override void OnHandleCreated(EventArgs e)
     {
         base.OnHandleCreated(e);
-        ItemHeight = (int)Math.Round(26 * DeviceDpi / 96f);
+        SizeField();
+    }
+
+    protected override void OnFontChanged(EventArgs e)
+    {
+        base.OnFontChanged(e);
+        SizeField();
+    }
+
+    private bool sizingField;
+    private void SizeField()
+    {
+        if (!IsHandleCreated || sizingField) return;
+        sizingField = true;
+        try
+        {
+            int chrome = Math.Max(0, Height - ItemHeight);
+            float scale = DeviceDpi / 96f;
+            int height = Math.Max((int)Math.Round(ButtonSpacing.FieldHeight * scale), Font.Height + (int)Math.Round(2 * ButtonSpacing.Vertical * scale));
+            ItemHeight = Math.Max(1, height - chrome);
+            Parent?.PerformLayout();
+        }
+        finally { sizingField = false; }
     }
 
     protected override void WndProc(ref Message message)
@@ -268,12 +289,12 @@ internal sealed class SettingsChoice : ComboBox
         float s = DeviceDpi / 96f;
         using (SolidBrush background = new(Parent?.BackColor ?? palette.Surface)) g.FillRectangle(background, ClientRectangle);
         g.SmoothingMode = SmoothingMode.AntiAlias;
-        using GraphicsPath shape = CaptureDrawing.Rounded(new RectangleF(s, s, Width - 2 * s, Height - 2 * s), 8 * s);
+        using GraphicsPath shape = CaptureDrawing.Rounded(new RectangleF(s, s, Width - 2 * s, Height - 2 * s), 10 * s);
         using SolidBrush fill = new(hovering ? palette.Hover : palette.Canvas);
         using Pen edge = new(Focused || menu?.Visible == true ? palette.Accent : palette.Border, (Focused ? 1.5f : 1) * s);
         g.FillPath(fill, shape);
-        g.DrawPath(edge, shape);
-        TextRenderer.DrawText(g, Text, Font, new Rectangle((int)(10 * s), 0, Math.Max(0, Width - (int)(36 * s)), Height), Enabled ? palette.Text : palette.Secondary,
+        if (Focused && ShowFocusCues || menu?.Visible == true || SystemInformation.HighContrast) g.DrawPath(edge, shape);
+        TextRenderer.DrawText(g, Text, Font, new Rectangle((int)(ButtonSpacing.Horizontal * s), 0, Math.Max(0, Width - (int)((ButtonSpacing.Horizontal + 34) * s)), Height), Enabled ? palette.Text : palette.Secondary,
             TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.PreserveGraphicsClipping | TextFormatFlags.PreserveGraphicsTranslateTransform | UiLanguage.TextDirection);
         float x = Width - 15 * s, y = Height / 2f;
         using Pen arrow = new(palette.Secondary, 1.5f * s) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
@@ -297,43 +318,26 @@ internal sealed class SettingsChoice : ComboBox
     {
         if (!Enabled || Items.Count == 0 || menu?.Visible == true) return;
         CloseMenu();
-        ToolStripDropDownMenu popup = new()
-        {
-            Name = Name + "Menu", Font = Font, ShowImageMargin = false, ShowCheckMargin = true,
-            AutoSize = true, Padding = new Padding(5), BackColor = palette.Surface, ForeColor = palette.Text,
-            MaximumSize = new Size(Math.Max(Width, DropDownWidth), (int)(360 * DeviceDpi / 96f)),
-            Renderer = new ChoiceMenuRenderer(palette), Opacity = UiMotion.Enabled ? .01 : 1
-        };
+        // Share the editor's complete menu visual layer, including native background blur,
+        // per-theme material, shadow, rounded fallback, content grid and DPI-aware whitespace.
+        // The existing ComboBox remains the source of selection, callbacks and keyboard behavior.
+        ToolStripDropDownMenu popup = (ToolStripDropDownMenu)EditorOverflow.CreateChoices(
+            this, this, palette, transparencyEnabled?.Invoke() ?? true, DropDownWidth);
+        popup.Name = Name + "Menu";
         menu = popup;
         ToolStripMenuItem? selected = null;
         for (int index = 0; index < Items.Count; index++)
         {
-            int captured = index;
-            ToolStripMenuItem item = new(GetItemText(Items[index]))
-            {
-                Checked = index == SelectedIndex, ForeColor = palette.Text, BackColor = palette.Surface,
-                AutoSize = false, Size = new Size(Math.Max(Width, DropDownWidth) - 12, (int)(32 * DeviceDpi / 96f)),
-                AccessibleName = GetItemText(Items[index]),
-                RightToLeft = (Items[index] is LanguageOption { Mode: not LanguageMode.System } option
-                    ? System.Globalization.CultureInfo.GetCultureInfo(option.CultureName).TextInfo.IsRightToLeft
-                    : UiLanguage.Culture.TextInfo.IsRightToLeft) ? RightToLeft.Yes : RightToLeft.No
-            };
-            item.Click += (_, _) => { SelectedIndex = captured; Focus(); };
-            popup.Items.Add(item);
+            ToolStripMenuItem item = (ToolStripMenuItem)popup.Items[index];
+            item.AccessibleName = GetItemText(Items[index]);
+            item.RightToLeft = (Items[index] is LanguageOption { Mode: not LanguageMode.System } option
+                ? System.Globalization.CultureInfo.GetCultureInfo(option.CultureName).TextInfo.IsRightToLeft
+                : UiLanguage.Culture.TextInfo.IsRightToLeft) ? RightToLeft.Yes : RightToLeft.No;
             if (item.Checked) selected = item;
         }
-        popup.Closed += (_, _) => { menuReveal?.Dispose(); menuReveal = null; Invalidate(); };
-        popup.SizeChanged += (_, _) =>
-        {
-            using GraphicsPath outline = CaptureDrawing.Rounded(popup.ClientRectangle, 10 * DeviceDpi / 96f);
-            Region? previous = popup.Region;
-            popup.Region = new Region(outline);
-            previous?.Dispose();
-        };
-        menuReveal = new UiTween(popup, () => { if (!popup.IsDisposed) popup.Opacity = menuReveal == null ? 1 : Math.Max(.01, menuReveal.Value); });
+        popup.Closed += (_, _) => Invalidate();
         popup.Show(this, new Point(0, Height + (int)(4 * DeviceDpi / 96f)));
         selected?.Select();
-        menuReveal.AnimateTo(1, 140);
         Invalidate();
     }
 
@@ -341,8 +345,6 @@ internal sealed class SettingsChoice : ComboBox
     {
         ToolStripDropDownMenu? previous = menu;
         menu = null;
-        menuReveal?.Dispose();
-        menuReveal = null;
         previous?.Close();
         previous?.Dispose();
         Invalidate();
@@ -350,30 +352,4 @@ internal sealed class SettingsChoice : ComboBox
     protected override void OnVisibleChanged(EventArgs e) { base.OnVisibleChanged(e); if (!Visible) CloseMenu(); }
     protected override void Dispose(bool disposing) { if (disposing) CloseMenu(); base.Dispose(disposing); }
 
-    private sealed class ChoiceMenuRenderer(CapturePalette palette) : ToolStripProfessionalRenderer
-    {
-        protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e) { e.Graphics.Clear(palette.Surface); }
-        protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e)
-        {
-            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            using GraphicsPath shape = CaptureDrawing.Rounded(new RectangleF(.5f, .5f, e.ToolStrip.Width - 1, e.ToolStrip.Height - 1), 10 * e.ToolStrip.DeviceDpi / 96f);
-            using Pen edge = new(palette.Border);
-            e.Graphics.DrawPath(edge, shape);
-        }
-        protected override void OnRenderImageMargin(ToolStripRenderEventArgs e) { }
-        protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
-        {
-            using SolidBrush fill = new(e.Item.Selected ? palette.Hover : palette.Surface);
-            using GraphicsPath shape = CaptureDrawing.Rounded(new RectangleF(0, 0, e.Item.Width, e.Item.Height), 6 * (e.ToolStrip?.DeviceDpi ?? 96) / 96f);
-            e.Graphics.FillPath(fill, shape);
-        }
-        protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e) { e.TextColor = palette.Text; base.OnRenderItemText(e); }
-        protected override void OnRenderItemCheck(ToolStripItemImageRenderEventArgs e)
-        {
-            Rectangle box = e.ImageRectangle;
-            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            using Pen pen = new(palette.Accent, 1.7f * (e.ToolStrip?.DeviceDpi ?? 96) / 96f) { StartCap = LineCap.Round, EndCap = LineCap.Round };
-            e.Graphics.DrawLines(pen, new PointF[] { new(box.Left + box.Width * .2f, box.Top + box.Height * .5f), new(box.Left + box.Width * .43f, box.Top + box.Height * .72f), new(box.Left + box.Width * .8f, box.Top + box.Height * .27f) });
-        }
-    }
 }

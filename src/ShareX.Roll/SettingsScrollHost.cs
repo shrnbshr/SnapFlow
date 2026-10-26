@@ -23,6 +23,9 @@ internal sealed class SettingsScrollHost : Panel
     internal int ScrollUpdates { get; private set; }
     private int Offset => -viewport.AutoScrollPosition.Y;
     private int Maximum => Math.Max(0, viewport.DisplayRectangle.Height - viewport.ClientSize.Height);
+    internal int CoveredHeight { get; set; }
+    internal Action? PresentScrollFrame { get; set; }
+    private int PageHeight => Math.Max(1, viewport.ClientSize.Height - CoveredHeight);
 
     internal SettingsScrollHost(Panel viewport)
     {
@@ -79,7 +82,7 @@ internal sealed class SettingsScrollHost : Panel
         if (!motion.Enabled && Offset != lastWritten) StopMotion();
         int lines = SystemInformation.MouseWheelScrollLines;
         if (lines == 0 || Maximum == 0) { StopMotion(); return; }
-        double step = lines < 0 ? viewport.ClientSize.Height : (double)lines * Math.Max(viewport.Font.Height, viewport.VerticalScroll.SmallChange);
+        double step = lines < 0 ? PageHeight : (double)lines * Math.Max(viewport.Font.Height, viewport.VerticalScroll.SmallChange);
         double distance = -delta * step / SystemInformation.MouseWheelScrollDelta;
         // Small wheel deltas already represent fine-grained input, possibly with OS inertia.
         // Keep them direct and retain subpixel remainder instead of adding another animation.
@@ -101,6 +104,9 @@ internal sealed class SettingsScrollHost : Panel
         if (!sameDirection) ApplyPosition(position + Math.Sign(distance) * Math.Min(Math.Abs(target - position) * .08, 6 * DeviceDpi / 96d));
         if (!continuing) { clock.Restart(); lastSample = 0; }
         lastInput = clock.Elapsed.TotalSeconds;
+        // A reversal starts at the currently presented position. Do not replay the wait
+        // before that input in its new direction; same-direction input keeps its cadence.
+        if (!sameDirection) lastSample = lastInput;
         motion.Start();
     }
 
@@ -141,6 +147,7 @@ internal sealed class SettingsScrollHost : Panel
             lastWritten = Offset;
             // The native scroll operation invalidates the exposed bands and moved HWNDs.
             // Do not invalidate every descendant again for each input/frame.
+            PresentScrollFrame?.Invoke();
             bar.Invalidate();
             bar.Update();
         }
@@ -351,7 +358,7 @@ internal sealed class SettingsScrollHost : Panel
                 Capture = true;
                 Invalidate();
             }
-            else ScrollTo(Offset + (e.Y < thumb.Top ? -1 : 1) * Math.Max(1, Viewport.ClientSize.Height - Scale(32)));
+            else ScrollTo(Offset + (e.Y < thumb.Top ? -1 : 1) * Math.Max(1, host.PageHeight - Scale(32)));
         }
 
         protected override void OnMouseMove(MouseEventArgs e)
@@ -389,7 +396,7 @@ internal sealed class SettingsScrollHost : Panel
         protected override void OnKeyDown(KeyEventArgs e)
         {
             base.OnKeyDown(e);
-            int page = Math.Max(1, Viewport.ClientSize.Height - Scale(32));
+            int page = Math.Max(1, host.PageHeight - Scale(32));
             int? target = e.KeyCode switch
             {
                 Keys.Up => Offset - Viewport.VerticalScroll.SmallChange,
@@ -426,7 +433,7 @@ internal sealed class SettingsScrollHost : Panel
     }
 }
 
-internal sealed class SettingsScrollViewport : Panel
+internal class SettingsScrollViewport : Panel
 {
     internal Action<int>? WheelRequested { get; set; }
     internal SettingsScrollViewport() => DoubleBuffered = true;

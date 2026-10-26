@@ -6,6 +6,17 @@ namespace ShareX.Roll;
 
 internal static class EditorIcons
 {
+    internal static bool HasIcon(ToolStripItem item) => (item.Tag is ShapeType type && type is
+        ShapeType.ToolSelect or ShapeType.ToolCrop or ShapeType.DrawingRectangle or ShapeType.DrawingEllipse or
+        ShapeType.DrawingLine or ShapeType.DrawingArrow or ShapeType.DrawingFreehand or ShapeType.DrawingFreehandArrow or
+        ShapeType.DrawingTextOutline or ShapeType.DrawingTextBackground or ShapeType.DrawingSpeechBalloon or
+        ShapeType.DrawingStep or ShapeType.DrawingMagnify or ShapeType.DrawingSmartEraser or ShapeType.EffectBlur or
+        ShapeType.EffectPixelate or ShapeType.EffectHighlight or ShapeType.ToolSpotlight or ShapeType.DrawingCursor or
+        ShapeType.DrawingSticker or ShapeType.DrawingImage or ShapeType.DrawingImageScreen) || item.Name is
+        "editorApply" or "editorSave" or "editorSaveAs" or "editorCopy" or "editorStyle" or "editorEditMenu" or
+        "editorUndo" or "editorRedo" or "editorPaste" or "editorDuplicate" or "editorDelete" or "editorDeleteAll" or
+        "editorMoveTop" or "editorMoveUp" or "editorMoveDown" or "editorMoveBottom";
+
     internal static void Draw(Graphics g, Rectangle bounds, ShapeType? type, string name, Color ink)
     {
         GraphicsState state = g.Save();
@@ -89,6 +100,53 @@ internal static class EditorIcons
                 }
                 else if (name == "editorEditMenu") { g.DrawArc(p, 3, 5, 14, 12, 200, 260); Line(2, 4, 2, 10); Line(2, 10, 8, 10); }
                 else if (name == "editorCopy") { g.DrawRectangle(p, 6, 6, 11, 12); Line(3, 13, 3, 2); Line(3, 2, 13, 2); }
+                else if (name == "editorSave")
+                {
+                    g.DrawPolygon(p, [new PointF(3, 2), new(14, 2), new(18, 6), new(18, 18), new(3, 18)]);
+                    g.DrawRectangle(p, 6, 2, 7, 5); g.DrawRectangle(p, 6, 11, 9, 7);
+                }
+                else if (name == "editorSaveAs")
+                {
+                    g.DrawLines(p, [new PointF(8, 3), new(3, 3), new(3, 17), new(17, 17), new(17, 12)]);
+                    Line(9, 11, 17, 3); Line(11, 3, 17, 3); Line(17, 3, 17, 9);
+                }
+                else if (name == "editorUndo")
+                {
+                    g.DrawBezier(p, new(16, 16), new(20, 6), new(10, 3), new(4, 8));
+                    Line(4, 3, 4, 8); Line(4, 8, 9, 8);
+                }
+                else if (name == "editorRedo")
+                {
+                    g.DrawBezier(p, new(4, 16), new(0, 6), new(10, 3), new(16, 8));
+                    Line(11, 8, 16, 8); Line(16, 8, 16, 3);
+                }
+                else if (name == "editorPaste")
+                {
+                    g.DrawLines(p, [new PointF(6, 4), new(3, 4), new(3, 18), new(17, 18), new(17, 4), new(14, 4)]);
+                    g.DrawRectangle(p, 6, 2, 8, 4); Line(7, 10, 13, 10); Line(7, 14, 13, 14);
+                }
+                else if (name == "editorDuplicate")
+                {
+                    g.DrawRectangle(p, 3, 2, 10, 12); g.DrawRectangle(p, 7, 6, 10, 12);
+                }
+                else if (name is "editorDelete" or "editorDeleteAll")
+                {
+                    g.DrawRectangle(p, 5, 6, 10, 12); Line(3, 5, 17, 5); g.DrawRectangle(p, 7, 2, 6, 3);
+                    if (name == "editorDelete") { Line(8, 9, 8, 15); Line(12, 9, 12, 15); }
+                    else { Line(8, 10, 12, 14); Line(12, 10, 8, 14); }
+                }
+                else if (name is "editorMoveTop" or "editorMoveUp")
+                {
+                    if (name == "editorMoveTop") { Line(3, 2, 17, 2); Line(4, 15, 16, 15); Line(4, 18, 16, 18); }
+                    else g.DrawRectangle(p, 3, 12, 14, 6);
+                    Line(10, 13, 10, 5); Line(6, 9, 10, 5); Line(10, 5, 14, 9);
+                }
+                else if (name is "editorMoveBottom" or "editorMoveDown")
+                {
+                    if (name == "editorMoveBottom") { Line(3, 18, 17, 18); Line(4, 2, 16, 2); Line(4, 5, 16, 5); }
+                    else g.DrawRectangle(p, 3, 2, 14, 6);
+                    Line(10, 7, 10, 15); Line(6, 11, 10, 15); Line(10, 15, 14, 11);
+                }
                 else { g.DrawRectangle(p, 3, 3, 14, 14); Line(10, 2, 10, 12); Line(6, 8, 10, 12); Line(10, 12, 14, 8); }
                 break;
         }

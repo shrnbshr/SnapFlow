@@ -29,11 +29,15 @@ internal static class ThemeBackgroundRegression
             List<string> differences = new();
             foreach (Control child in Descendants(group))
             {
-                if (child.BackColor != palette.Surface)
-                    differences.Add($"{child.GetType().Name} {child.Name}: {child.BackColor} instead of {palette.Surface}");
+                // Existing input wells use Canvas; captions and the rest of each card use Surface.
+                Color expectedBackground = child is SettingsChoice or TextBoxBase or NumericUpDown || child.Parent is NumericUpDown
+                    ? palette.Canvas : palette.Surface;
+                if (child.BackColor != expectedBackground)
+                    differences.Add($"{child.GetType().Name} {child.Name}: {child.BackColor} instead of {expectedBackground}");
                 if (child is Label && child.ForeColor != (Equals(child.Tag, "secondary") ? palette.Secondary : palette.Text))
                     differences.Add("wrong text color: " + child.Text);
-                if (child is Label or ModeGlyph or MotionToggle || child is Button { Text: "×" })
+                if (child.Visible && child.Width > 0 && child.Height > 0
+                    && (child is Label or ModeGlyph or MotionToggle || child is Button { Text: "×" }))
                 {
                     using Bitmap bitmap = new(child.Width, child.Height);
                     child.DrawToBitmap(bitmap, new Rectangle(Point.Empty, child.Size));
@@ -75,9 +79,9 @@ internal static class ThemeBackgroundRegression
                 Verify(page, CapturePalette.For(mode));
                 step++;
             }
-            Find<Button>(page, "backToCaptureButton").PerformClick();
+            Find<Button>(page, "cancelSettingsButton").PerformClick();
             await Task.Delay(260);
-            Check(main.Controls.Find("SettingsPage", true).Length == 0, "return still restores the capture workspace");
+            Check(!main.Controls.Find("SettingsPage", true).Any(control => control.Visible), "return restores the capture workspace and hides the cached settings page");
         }
         finally
         {

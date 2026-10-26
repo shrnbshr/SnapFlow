@@ -47,6 +47,7 @@ internal static class SettingsScrollMotionRegression
             SettingsPage page = Find<SettingsPage>(main, "SettingsPage");
             Panel viewport = Field<Panel>(page, "scroller");
             Control content = Field<TableLayoutPanel>(page, "content");
+            Control scrollingContent = viewport.Controls[0];
             Control bar = Find<Control>(page, "settingsScrollBar");
             SettingsScrollHost host = Find<SettingsScrollHost>(page, "settingsScrollHost");
             PropertyInfo thumbProperty = bar.GetType().GetProperty("Thumb", BindingFlags.NonPublic | BindingFlags.Instance)!;
@@ -76,13 +77,13 @@ internal static class SettingsScrollMotionRegression
                     }
                 };
                 LayoutEventHandler laidOut = (_, _) => layouts++;
-                content.LocationChanged += moved;
+                scrollingContent.LocationChanged += moved;
                 content.Layout += laidOut;
                 bar.Paint += painted;
                 Wheel(viewport, -120);
                 int immediate = Offset();
                 await Task.Delay(420);
-                content.LocationChanged -= moved;
+                scrollingContent.LocationChanged -= moved;
                 content.Layout -= laidOut;
                 bar.Paint -= painted;
                 foreach (var sample in trace)
@@ -202,13 +203,13 @@ internal static class SettingsScrollMotionRegression
                 Wheel(viewport, -120);
                 int prematureSettles = 0;
                 EventHandler settling = (_, _) => { if (!host.IsScrolling) prematureSettles++; };
-                content.LocationChanged += settling;
+                scrollingContent.LocationChanged += settling;
                 for (int i = 1; i < 10; i++)
                 {
                     await Task.Delay(50);
                     Wheel(viewport, -120);
                 }
-                content.LocationChanged -= settling;
+                scrollingContent.LocationChanged -= settling;
                 Check(prematureSettles == 0 && host.IsScrolling, "sustained wheel input keeps a single continuous animation without periodic target jumps");
                 await Task.Delay(420);
                 Check(Offset() == Math.Min(10 * step, Maximum()) && !host.IsScrolling, "sustained wheel input settles at the exact accumulated destination");
@@ -326,15 +327,15 @@ internal static class SettingsScrollMotionRegression
                 Console.WriteLine(FormattableString.Invariant($"COST: updates={host.ScrollUpdates}, meanNativeUpdateMs={host.ScrollUpdateTicks * 1000d / Stopwatch.Frequency / Math.Max(1, host.ScrollUpdates):F3}, maxNativeUpdateMs={host.MaximumScrollUpdateTicks * 1000d / Stopwatch.Frequency:F3}"));
                 viewport.AutoScrollPosition = Point.Empty;
                 Wheel(viewport, -120);
-                Find<Button>(page, "backToCaptureButton").PerformClick();
+                Find<Button>(page, "cancelSettingsButton").PerformClick();
                 await Task.Delay(80);
-                Check(page.IsDisposed && !host.IsScrolling, "leaving settings disposes the scrolling timer");
+                Check(!page.Visible && !host.IsScrolling, "leaving settings stops its scrolling timer and hides the cached page");
             }
         }
         finally
         {
             File.WriteAllLines(Path.Combine(output, $"{(baseline ? "before" : "after")}-{main.DeviceDpi}.csv"), rows);
-            if (main.Controls.Find("backToCaptureButton", true).FirstOrDefault() is Button back) back.PerformClick();
+            if (main.Controls.Find("cancelSettingsButton", true).FirstOrDefault() is Button back) back.PerformClick();
             Set(main, "preferences", original);
             UiMotion.UserEnabled = originalMotion;
             main.TopMost = originalTopMost;

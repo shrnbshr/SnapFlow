@@ -1244,6 +1244,13 @@ namespace ShareX.ScreenCaptureLib
                 tslDragRight.MouseLeave += TslDrag_MouseLeave;
             }
 
+            if (Options.UseEditorChrome)
+            {
+                // Custom editor chrome shares the editor's material, activation and DPI context.
+                menuForm.TopLevel = false;
+                menuForm.Location = Point.Empty;
+                Form.Controls.Add(menuForm);
+            }
             if (Form.IsEditorMode) Form.OnEditorToolbarCreated(tsMain);
             // The owned toolbar's Shown event can arrive after the editor's initial fit.
             if (Options.UseEditorChrome) Form.ToolbarHeight = menuForm.Height;
@@ -1274,7 +1281,8 @@ namespace ShareX.ScreenCaptureLib
 
             ShareXResources.ApplyTheme(menuForm, false, false);
 
-            menuForm.Show(Form);
+            if (Options.UseEditorChrome) menuForm.Show();
+            else menuForm.Show(Form);
 
             UpdateMenu();
 
@@ -1291,7 +1299,7 @@ namespace ShareX.ScreenCaptureLib
 
         private void MenuForm_Shown(object sender, EventArgs e)
         {
-            Form.ToolbarHeight = Options.UseEditorChrome ? (int)(112 * Form.DeviceDpi / 96f) : menuForm.Height;
+            Form.ToolbarHeight = menuForm.Height;
             Form.CenterCanvas();
         }
 
@@ -1366,7 +1374,7 @@ namespace ShareX.ScreenCaptureLib
 
         internal void UpdateMenuPosition()
         {
-            if (Options.UseEditorChrome) { menuForm.Location = Form.PointToScreen(Point.Empty); return; }
+            if (Options.UseEditorChrome) { menuForm.Location = Point.Empty; return; }
             Rectangle rectScreen;
 
             if (Form.IsFullscreen)

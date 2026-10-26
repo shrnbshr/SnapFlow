@@ -35,7 +35,9 @@ internal static class NavigationContinuityRegression
                 numerator += (current.R - start.R) * r + (current.G - start.G) * g + (current.B - start.B) * b;
                 denominator += r * r + g * g + b * b;
             }
-        return denominator == 0 ? 0 : numerator / denominator;
+        if (denominator == 0)
+            throw new InvalidOperationException("Desktop capture shows identical pages; verify that the Windows desktop is unlocked and visible.");
+        return numerator / denominator;
     }
 
     private static async Task VerifyLiveFrames(MainForm main, string output, string direction)

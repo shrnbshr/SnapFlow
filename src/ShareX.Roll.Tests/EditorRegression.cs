@@ -26,8 +26,8 @@ internal static class EditorRegression
         if (!value) throw new InvalidOperationException(message);
         Console.WriteLine("PASS: " + message);
     }
-    internal static ToolStrip Actions(RegionCaptureForm editor) => editor.OwnedForms
-        .SelectMany(form => form.Controls.Find("editorActions", true)).OfType<ToolStrip>().Single();
+    internal static ToolStrip Tools(RegionCaptureForm editor) => editor.Controls.Find("editorToolbar", true).OfType<ToolStrip>().Single();
+    internal static ToolStrip Actions(RegionCaptureForm editor) => editor.Controls.Find("editorActions", true).OfType<ToolStrip>().Single();
     internal static void Capture(Form form, string name)
     {
         using Bitmap image = new(form.Width, form.Height);
@@ -50,7 +50,7 @@ internal static class EditorRegression
 
         async Task DriveAsync()
         {
-            // The native owned toolbar pumps messages during its first handle/font creation.
+            // The native toolbar pumps messages during its first handle/font creation.
             // Wait for completed chrome and initial crop rather than inspecting a half-created window.
             RegionCaptureForm? editor = null;
             Stopwatch startup = Stopwatch.StartNew();
@@ -59,8 +59,8 @@ internal static class EditorRegression
                 await Task.Delay(30);
                 editor = Field<RegionCaptureForm>(main, "editorForm");
                 if (editor is { Visible: true, IsEditorCropPending: true } &&
-                    editor.OwnedForms.SelectMany(f => f.Controls.OfType<ToolStrip>())
-                        .Any(strip => strip.Top > 0 && strip.Width == editor.ClientSize.Width)) break;
+                    editor.Controls.Find("editorToolbar", true).OfType<ToolStrip>()
+                        .Any(strip => strip.Top > 0 && strip.Left > 0 && strip.Right <= editor.ClientSize.Width)) break;
             }
             if (editor == null || !editor.Visible || !editor.IsEditorCropPending)
                 throw new InvalidOperationException("Editor did not finish opening: " + main.Controls.Find("statusLabel", true).FirstOrDefault()?.Text);
@@ -97,7 +97,7 @@ internal static class EditorRegression
         {
             Check(!ReferenceEquals(editor.Canvas, original), "editor owns a copy of the preview");
             Check(Field<List<HotkeyInfo>>(main, "hotkeys").Count == 0, "global capture shortcuts are released while editing");
-            ToolStrip strip = editor.OwnedForms.SelectMany(f => f.Controls.OfType<ToolStrip>()).Single();
+            ToolStrip strip = Tools(editor);
             Check(Actions(editor).Items["editorApply"]!.Text == L("ApplyPreview") && Actions(editor).Items["editorSaveAs"]!.Text == L("ExportImage"),
                 "toolbar clearly labels apply and export");
             Check(strip.Items["editorUpload"] == null && strip.Items["editorPrint"] == null, "unsupported actions are absent");
@@ -168,14 +168,14 @@ internal static class EditorRegression
                 }
                 throw new TimeoutException("Export dialog did not appear");
             });
-            ToolStrip exportStrip = editor.OwnedForms.SelectMany(f => f.Controls.OfType<ToolStrip>()).Single();
+            ToolStrip exportStrip = Tools(editor);
             Actions(editor).Items["editorSaveAs"]!.PerformClick();
             await cancelExport;
             Check(editor.Visible && editor.Canvas.Size == crop.Size && editor.ImageFilePath == lastPath,
                 "canceling the actual export dialog preserves the image, file path and editor window");
             await Task.Delay(150);
             Capture(editor, "editor-cropped");
-            ToolStrip strip = editor.OwnedForms.SelectMany(f => f.Controls.OfType<ToolStrip>()).Single();
+            ToolStrip strip = Tools(editor);
             Actions(editor).Items["editorApply"]!.PerformClick();
         });
         Bitmap applied = Field<Bitmap>(main, "result");

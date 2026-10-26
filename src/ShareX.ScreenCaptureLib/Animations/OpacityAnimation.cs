@@ -54,18 +54,23 @@ namespace ShareX.ScreenCaptureLib
         {
             if (IsActive)
             {
-                if (Timer.Elapsed < FadeInDuration)
+                TimeSpan elapsed = Timer.Elapsed;
+                if (elapsed >= TotalDuration)
                 {
-                    Opacity = Timer.Elapsed.TotalMilliseconds / FadeInDuration.TotalMilliseconds;
+                    Opacity = 0;
+                    Stop();
+                }
+                else if (elapsed < FadeInDuration)
+                {
+                    Opacity = elapsed.TotalMilliseconds / FadeInDuration.TotalMilliseconds;
+                }
+                else if (elapsed < FadeInDuration + Duration)
+                {
+                    Opacity = 1;
                 }
                 else
                 {
-                    Opacity = 1 - ((Timer.Elapsed - (FadeInDuration + Duration)).TotalMilliseconds / FadeOutDuration.TotalMilliseconds);
-                }
-
-                if (Opacity == 0)
-                {
-                    Timer.Stop();
+                    Opacity = 1 - ((elapsed - (FadeInDuration + Duration)).TotalMilliseconds / FadeOutDuration.TotalMilliseconds);
                 }
             }
 

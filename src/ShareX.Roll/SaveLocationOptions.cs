@@ -8,10 +8,11 @@ internal sealed class SaveLocationOptions : UserControl
     private readonly ApplicationPreferences draft;
     private readonly MotionToggle useFolder = new() { Name = "defaultSaveFolderToggle", Size = new Size(46, 28), Anchor = AnchorStyles.Right, Margin = Padding.Empty };
     private readonly TextBox folder = new() { Name = "defaultSaveFolderPath", ReadOnly = true, Dock = DockStyle.Fill, Margin = new Padding(0, 0, 10, 0) };
-    private readonly Button browse = new() { Name = "browseSaveFolderButton", AutoSize = true, MinimumSize = new Size(100, 38), Padding = new Padding(8, 0, 8, 0), Margin = Padding.Empty, FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand };
+    private readonly Button browse = new() { Name = "browseSaveFolderButton", AutoSize = true, MinimumSize = new Size(120, ButtonSpacing.ActionHeight), Padding = ButtonSpacing.ActionPadding, Margin = Padding.Empty, FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand };
     private readonly TableLayoutPanel pathRow = new() { Name = "saveFolderPathRow", Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Height = 38, ColumnCount = 2, RowCount = 1, Margin = new Padding(0, 12, 0, 0) };
     private readonly Label validation = new() { Name = "saveFolderValidation", AutoSize = true, Dock = DockStyle.Top, Tag = "secondary", Margin = new Padding(0, 8, 0, 0) };
     internal event EventHandler? Changed;
+    internal TableLayoutPanel Header { get; }
 
     internal SaveLocationOptions(ApplicationPreferences draft)
     {
@@ -20,25 +21,19 @@ internal sealed class SaveLocationOptions : UserControl
         Name = "saveLocationOptions";
         AutoScaleDimensions = new SizeF(96, 96);
         AutoScaleMode = AutoScaleMode.Dpi;
+        Font = new Font("Microsoft YaHei UI", 11f);
         AutoSize = true;
         AutoSizeMode = AutoSizeMode.GrowAndShrink;
         Margin = Padding.Empty;
-        SettingsGroup group = new() { Name = "saveLocationGroup", Dock = DockStyle.Top, AutoSize = true, DrawDividers = false, ColumnCount = 1, RowCount = 3, Padding = new Padding(16, 14, 16, 14), Margin = Padding.Empty };
+        SettingsGroup group = new() { Name = "saveLocationGroup", Dock = DockStyle.Top, AutoSize = true, DrawDividers = false, ColumnCount = 1, RowCount = 3, Padding = Padding.Empty, Margin = Padding.Empty };
         group.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         group.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         group.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         group.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        TableLayoutPanel header = new() { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, RowCount = 1, Margin = Padding.Empty };
-        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        FlowLayoutPanel caption = new() { Dock = DockStyle.Fill, AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false, Margin = new Padding(0, 0, 14, 0) };
+        Header = new SettingsOptionHeader { Name = "saveFolderHeader", Dock = DockStyle.Top };
         Label title = new() { Text = L("DefaultSaveFolder"), AutoSize = true, Margin = Padding.Empty };
-        Label hint = new() { Text = L("DefaultSaveFolderHint"), AutoSize = true, Tag = "secondary", Font = new Font("Microsoft YaHei UI", 10), Margin = new Padding(0, 3, 0, 0) };
-        caption.Controls.AddRange([title, hint]);
-        caption.SizeChanged += (_, _) =>
-        {
-            foreach (Label label in caption.Controls) label.MaximumSize = new Size(Math.Max(1, caption.ClientSize.Width), 0);
-        };
+        Label hint = new() { Text = L("DefaultSaveFolderHint"), Tag = "secondary", Font = new Font(Font.FontFamily, 10) };
+        SettingsLayout.ConfigureOption(Header, title, hint, useFolder);
         useFolder.AccessibleName = L("DefaultSaveFolder");
         useFolder.AccessibleDescription = L("DefaultSaveFolderHint");
         useFolder.Checked = draft.UseDefaultSaveFolder;
@@ -48,10 +43,10 @@ internal sealed class SaveLocationOptions : UserControl
             RefreshState();
             Changed?.Invoke(this, EventArgs.Empty);
         };
-        header.Controls.Add(caption, 0, 0);
-        header.Controls.Add(useFolder, 1, 0);
+        pathRow.Margin = new Padding(SettingsLayout.Inset, 0, SettingsLayout.Inset, SettingsLayout.Vertical);
         pathRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         pathRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        pathRow.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         folder.AccessibleName = L("SaveFolderPath");
         folder.PlaceholderText = L("ChooseSaveFolder");
         folder.AccessibleDescription = L("DefaultSaveFolderHint");
@@ -61,13 +56,18 @@ internal sealed class SaveLocationOptions : UserControl
         browse.Text = L("BrowseSaveFolder");
         browse.AccessibleName = L("BrowseSaveFolder");
         browse.Click += (_, _) => Browse();
-        SettingsFolderField field = new(folder) { Dock = DockStyle.Fill, Margin = new Padding(0, 0, 10, 0) };
+        SettingsFolderField field = new(folder)
+        {
+            AutoSize = true, Anchor = AnchorStyles.Left | AnchorStyles.Right,
+            Margin = new Padding(0, 0, SettingsLayout.Gap, 0)
+        };
         pathRow.Controls.Add(field, 0, 0);
         pathRow.Controls.Add(browse, 1, 0);
         pathRow.Visible = useFolder.Checked;
-        group.Controls.Add(header, 0, 0);
+        group.Controls.Add(Header, 0, 0);
         group.Controls.Add(pathRow, 0, 1);
         validation.Font = new Font("Microsoft YaHei UI", 10);
+        validation.Margin = new Padding(SettingsLayout.Inset, 0, SettingsLayout.Inset, SettingsLayout.Vertical);
         group.Controls.Add(validation, 0, 2);
         Controls.Add(group);
         group.SizeChanged += (_, _) => validation.MaximumSize = new Size(Math.Max(1, group.ClientSize.Width - group.Padding.Horizontal), 0);

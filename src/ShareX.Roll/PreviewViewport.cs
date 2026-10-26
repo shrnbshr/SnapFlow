@@ -1,6 +1,7 @@
 // GPL-3.0-or-later. View transforms affect presentation only; Image remains the original capture.
 using System.Diagnostics;
 using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using static ShareX.Roll.Localization.UiText;
 
 namespace ShareX.Roll;
@@ -10,7 +11,7 @@ internal sealed partial class PreviewCanvas
     private enum PreviewMode { Fit, Zoom, Width }
     private PreviewMode viewMode;
     private Image? viewImage;
-    private readonly System.Windows.Forms.Timer viewportTimer = new() { Interval = 15 };
+    private readonly ScrollFrameClock viewportTimer;
     private readonly Stopwatch viewportClock = new();
     private double viewportSample;
     private SpringAxis zoom = new(1), offsetX = new(0), offsetY = new(0);
@@ -21,6 +22,18 @@ internal sealed partial class PreviewCanvas
     private PreviewZoomFade zoomBarFade = null!;
     private bool hoverCheckPending;
     private PreviewWheelFilter? wheelFilter;
+    private bool zoomTransparencyEnabled = true;
+    internal bool ZoomTransparencyEnabled
+    {
+        get => zoomTransparencyEnabled;
+        set
+        {
+            if (zoomTransparencyEnabled == value) return;
+            zoomTransparencyEnabled = value;
+            zoomBar?.InvalidateBackdrop();
+            zoomBarFade?.RefreshSnapshot();
+        }
+    }
     internal double ZoomFactor => zoom.Value;
     internal double ZoomTarget => zoom.Target;
     internal bool IsWidthReading => viewMode == PreviewMode.Width;
@@ -35,7 +48,7 @@ internal sealed partial class PreviewCanvas
     private double FitScale => Image == null ? 1 : Math.Min((double)Width / Image.Width, (double)Height / Image.Height);
     private double MinimumScale => Math.Min(.05, FitScale);
     private double MaximumScale => Math.Max(8, FitScale);
-    private double BottomSpace(double scale) => Image != null && Image.Height * scale > Height ? zoomBar.Height + D(24) : 0;
+    private double BottomSpace(double scale) => Image != null && Image.Height * scale > Height ? zoomBar.FaceBounds.Height + D(24) : 0;
 
     private void InitializeViewport()
     {
@@ -50,7 +63,6 @@ internal sealed partial class PreviewCanvas
         }
         wheelFilter = new PreviewWheelFilter(this);
         Application.AddMessageFilter(wheelFilter);
-        viewportTimer.Tick += (_, _) => AdvanceViewport();
         HandleDestroyed += (_, _) => { hoverCheckPending = false; StopViewportMotion(); zoomBarFade.HideImmediately(); };
         MouseCaptureChanged += (_, _) => { if (!Capture) { panning = draggingThumb = false; UpdatePanCursor(); } };
         ApplyViewportLanguage();
@@ -142,6 +154,24 @@ internal sealed partial class PreviewCanvas
         graphics.Restore(state);
     }
 
+    protected override void OnInvalidated(InvalidateEventArgs e)
+    {
+        base.OnInvalidated(e);
+        // Child windows do not automatically repaint when the image beneath them moves.
+        zoomBar?.InvalidateBackdrop();
+        zoomBarFade?.RefreshSnapshot();
+    }
+
+    private void PaintZoomControlsInCurrentFrame()
+    {
+        if (zoomBar?.Visible != true) return;
+        // UpdateWindow paints each child now. Queued child WM_PAINT messages can otherwise
+        // lag behind the canvas during continuous dragging, scrolling or spring animation.
+        zoomBar.Update();
+        foreach (Control button in zoomBar.Controls) button.Update();
+        if (zoomBarFade?.Visible == true) zoomBarFade.Update();
+    }
+
     internal void ZoomBy(double steps, PointF anchor)
     {
         SynchronizeImage();
@@ -218,7 +248,7 @@ internal sealed partial class PreviewCanvas
 
     private void AdvanceViewport()
     {
-        if (!UiMotion.Enabled || Image == null) { StopViewportMotion(); return; }
+        if (!Visible || !UiMotion.Enabled || Image == null) { StopViewportMotion(); return; }
         double now = viewportClock.Elapsed.TotalSeconds;
         double elapsed = now - viewportSample;
         viewportSample = now;
@@ -251,9 +281,10 @@ internal sealed partial class PreviewCanvas
     private void PaintImage(Graphics graphics)
     {
         if (Image == null) return;
-        if (viewMode == PreviewMode.Fit && !viewportTimer.Enabled)
+        if (viewMode == PreviewMode.Fit && !viewportTimer.Enabled && zoom.Value == FitScale)
         {
-            // Preserve the original PictureBox's exact fit layout and pixel sampling.
+            // Preserve PictureBox's exact settled fit. A drag can stop the fit spring halfway;
+            // that interrupted presentation must keep its current scale instead of jumping to fit.
             base.OnPaint(new PaintEventArgs(graphics, ClientRectangle));
             return;
         }
@@ -457,9 +488,15 @@ internal sealed class PreviewZoomBar : Panel
     private readonly Button plus = new() { Name = "previewZoomIn", Text = "+" };
     private readonly Button width = new() { Name = "previewFitWidth" };
     private readonly ToolTip tips = new();
+    private readonly PreviewZoomBackdrop backdrop = new();
+    private Bitmap? shadow;
+    private float shadowScale;
     private CapturePalette palette = CapturePalette.Light;
     private bool reading;
     private string scaleText = "100%";
+    private int ShadowPadding => (int)Math.Round(12 * viewport.DeviceDpi / 96f);
+    internal RectangleF FaceBounds => new(ShadowPadding, ShadowPadding,
+        Width - 2 * ShadowPadding, Height - 2 * ShadowPadding);
 
     internal PreviewZoomBar(PreviewCanvas viewport)
     {
@@ -494,17 +531,20 @@ internal sealed class PreviewZoomBar : Panel
         // The 32px targets stay usable in the minimum-width preview at 96–200% DPI.
         int fitWidth = Math.Max(D(84), TextRenderer.MeasureText(width.Text, width.Font).Width + D(12));
         int[] widths = [D(32), D(66), D(32), fitWidth];
-        Size = new Size(widths.Sum() + D(16), D(44));
-        Location = new Point(Math.Max(0, viewport.Width - Width - D(28)), Math.Max(0, viewport.Height - Height - D(12)));
-        int x = D(6);
+        int padding = ShadowPadding;
+        int faceWidth = widths.Sum() + D(16), faceHeight = D(44);
+        // Reserve the shadow halo inside this one control, so its native fade also fades the shadow.
+        // The visible face and all button hit targets keep their original screen positions.
+        Size = new Size(faceWidth + 2 * padding, faceHeight + 2 * padding);
+        Location = new Point(Math.Max(0, viewport.Width - faceWidth - D(28) - padding),
+            Math.Max(0, viewport.Height - faceHeight - D(12) - padding));
+        int x = padding + D(6);
         Button[] buttons = [minus, percent, plus, width];
         for (int i = 0; i < buttons.Length; i++)
         {
-            buttons[i].Bounds = new Rectangle(x, D(6), widths[i], D(32));
+            buttons[i].Bounds = new Rectangle(x, padding + D(6), widths[i], D(32));
             x += widths[i] + (i == 2 ? D(4) : 0);
         }
-        using GraphicsPath path = CaptureDrawing.Rounded(new RectangleF(0, 0, Width, Height), D(14));
-        Region? old = Region; Region = new Region(path); old?.Dispose();
     }
 
     internal void ApplyPalette(CapturePalette value)
@@ -512,8 +552,9 @@ internal sealed class PreviewZoomBar : Panel
         palette = value;
         BackColor = palette.Surface;
         foreach (Button button in Controls) palette.StyleButton(button);
-        palette.StyleButton(width, reading);
-        Invalidate();
+        CapturePalette fitPalette = reading ? palette with { Accent = palette.Tint, AccentText = palette.Text } : palette;
+        fitPalette.StyleButton(width, reading);
+        InvalidateBackdrop();
     }
 
     internal void ApplyLanguage()
@@ -545,14 +586,62 @@ internal sealed class PreviewZoomBar : Panel
         if (reading != isReading) { reading = isReading; ApplyLanguage(); ApplyPalette(palette); }
     }
 
-    protected override void OnPaint(PaintEventArgs e)
+    internal void PaintSurface(Graphics graphics, Point origin)
     {
-        base.OnPaint(e);
-        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        using GraphicsPath path = CaptureDrawing.Rounded(new RectangleF(.5f, .5f, Width - 1, Height - 1), 14 * DeviceDpi / 96f);
-        using Pen border = new(palette.Border);
-        e.Graphics.DrawPath(border, path);
+        // All button windows sample the same blurred image, keeping the material continuous.
+        bool transparent = viewport.ZoomTransparencyEnabled && !SystemInformation.HighContrast;
+        if (origin == Point.Empty) viewport.PaintZoomBackdrop(graphics, Bounds);
+        else graphics.Clear(palette.Surface);
+        GraphicsState state = graphics.Save();
+        graphics.TranslateTransform(-origin.X, -origin.Y);
+        graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        using GraphicsPath path = CaptureDrawing.Rounded(FaceBounds, 14 * DeviceDpi / 96f);
+        if (origin == Point.Empty && !SystemInformation.HighContrast)
+            PaintShadow(graphics);
+        if (transparent)
+            backdrop.Paint(graphics, viewport, Bounds, path,
+                Color.FromArgb(palette.Surface.GetBrightness() < .5f ? 222 : 218, palette.Surface));
+        else
+        {
+            using SolidBrush fill = new(palette.Surface);
+            graphics.FillPath(fill, path);
+        }
+        graphics.Restore(state);
     }
 
-    protected override void Dispose(bool disposing) { if (disposing) tips.Dispose(); base.Dispose(disposing); }
+    private void PaintShadow(Graphics graphics)
+    {
+        float scale = DeviceDpi / 96f;
+        if (shadow == null || shadow.Size != Size || shadowScale != scale)
+        {
+            shadow?.Dispose();
+            shadow = ButtonElevation.CreateShadow(Size, scale, 2.6f, 1.4f, FaceBounds, 14 * scale, 2.6f, false);
+            shadowScale = scale;
+        }
+        using ImageAttributes opacity = new();
+        opacity.SetColorMatrix(new ColorMatrix { Matrix33 = palette.Surface.GetBrightness() < .5f ? .4f : .16f });
+        graphics.DrawImage(shadow, ClientRectangle, 0, 0, Width, Height, GraphicsUnit.Pixel, opacity);
+    }
+
+    protected override void OnPaintBackground(PaintEventArgs e) => PaintSurface(e.Graphics, Point.Empty);
+
+    internal void InvalidateBackdrop()
+    {
+        backdrop.Invalidate();
+        Invalidate(true);
+    }
+
+    protected override void WndProc(ref Message message)
+    {
+        if (message.Msg == 0x84) // Preserve click-through corners without a jagged native window region.
+        {
+            long position = message.LParam.ToInt64();
+            Point local = PointToClient(new Point((short)position, (short)(position >> 16)));
+            using GraphicsPath path = CaptureDrawing.Rounded(FaceBounds, 14 * DeviceDpi / 96f);
+            if (!path.IsVisible(local)) { message.Result = new IntPtr(-1); return; }
+        }
+        base.WndProc(ref message);
+    }
+
+    protected override void Dispose(bool disposing) { if (disposing) { tips.Dispose(); backdrop.Dispose(); shadow?.Dispose(); } base.Dispose(disposing); }
 }

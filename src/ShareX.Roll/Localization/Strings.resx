@@ -288,4 +288,8 @@ Esc to cancel</value>
   <data xml:space="preserve" name="SaveScreenshot"><value>Save screenshot</value></data>
   <data xml:space="preserve" name="SaveFolderUnavailableTitle"><value>Default folder unavailable — choose another folder to save</value></data>
   <data xml:space="preserve" name="NoSaveFolderSelected"><value>No folder selected</value></data>
+  <data xml:space="preserve" name="Transparency"><value>Transparency</value></data>
+  <data xml:space="preserve" name="TransparencyHint"><value>Use a frosted window background. Turn off for a solid background.</value></data>
+  <data xml:space="preserve" name="TransparencyUnavailable"><value>A solid background is used because Windows transparency is off, high contrast is on, or this system is unsupported.</value></data>
+  <data xml:space="preserve" name="TransparencyPreview"><value>Transparency previewed. Save to keep it; going back discards changes.</value></data>
 </root>

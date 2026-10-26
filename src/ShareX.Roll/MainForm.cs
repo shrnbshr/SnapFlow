@@ -36,6 +36,7 @@ public sealed partial class MainForm : HotkeyForm
         LoadPreferences();
 
         InitializeAppearance();
+        InitializeSettingsPage();
         copy.Click += (_, _) => { if (result != null) ClipboardHelpers.CopyImage(result); };
         save.Click += (_, _) => { if (result != null) SaveImage(result); };
         edit.Click += (_, _) => EditResult();

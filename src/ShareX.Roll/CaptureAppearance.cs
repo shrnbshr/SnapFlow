@@ -66,12 +66,14 @@ internal sealed record CapturePalette(Color Background, Color Surface, Color Can
     {
         bool emphasized = primary && button.Enabled;
         button.FlatStyle = FlatStyle.Flat;
+        button.FlatAppearance.BorderSize = 0;
         button.UseVisualStyleBackColor = false;
         button.BackColor = emphasized ? Accent : Surface;
         button.ForeColor = emphasized ? AccentText : Text;
         button.FlatAppearance.BorderColor = emphasized ? Accent : Border;
         Color shade = AccentText.GetBrightness() > .5 ? Color.Black : Color.White;
-        button.FlatAppearance.MouseOverBackColor = emphasized ? Mix(Accent, shade, .10f) : Hover;
+        button.FlatAppearance.MouseOverBackColor = emphasized ? Mix(Accent, shade, .10f) :
+            button.Parent is PreviewZoomBar ? Hover : ButtonElevation.Surface(this);
         button.FlatAppearance.MouseDownBackColor = emphasized ? Mix(Accent, shade, .18f) : Tint;
         button.Cursor = Cursors.Hand;
         button.AccessibleName = button.Name == "btnHelp" ? L("ScrollHelp") : button.Text.Replace("&", "");
@@ -86,14 +88,64 @@ internal sealed record CapturePalette(Color Background, Color Surface, Color Can
 // Paint the original Button instances so their native keyboard, accessibility and click behavior stays intact.
 internal static class CaptureButtonPainter
 {
+    internal static int PreferredActionWidth(Button button)
+    {
+        float scale = button.DeviceDpi / 96f;
+        int text = TextRenderer.MeasureText(button.Text, button.Font, Size.Empty,
+            TextFormatFlags.NoPadding | TextFormatFlags.SingleLine).Width;
+        // Two shadow gutters, face padding, icon, icon-label gap and a small GDI rounding allowance.
+        return text + (int)Math.Ceiling((32 + 2 * ButtonSpacing.Horizontal + 16 + ButtonSpacing.IconGap + 2) * scale);
+    }
+
     private sealed class State
     {
         internal CapturePalette Palette = CapturePalette.Light;
         internal bool Primary;
         internal readonly UiTween Hover, Press;
-        internal State(Button button) { Hover = new(button, button.Invalidate); Press = new(button, button.Invalidate); }
+        internal readonly ButtonElevation Elevation = new();
+        internal State(Button button)
+        {
+            Hover = new(button, button.Invalidate);
+            Press = new(button, button.Invalidate);
+            bool contentSized = button.AutoSize;
+            if (contentSized && button.Parent is not PreviewZoomBar) button.AutoSize = false;
+            void SizeToContent()
+            {
+                if (!button.IsHandleCreated || button.Parent is PreviewZoomBar) return;
+                float scale = button.DeviceDpi / 96f;
+                bool icon = button.Name is "editButton" or "copyButton" or "saveButton" or "settingsButton";
+                Size text = TextRenderer.MeasureText(button.Text, button.Font, Size.Empty, TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
+                int width = icon ? PreferredActionWidth(button) : text.Width + (int)Math.Ceiling((32 + 2 * ButtonSpacing.Horizontal + 2) * scale);
+                int height = Math.Max((int)Math.Ceiling(ButtonSpacing.ActionHeight * scale), text.Height + (int)Math.Ceiling((24 + 2 * ButtonSpacing.Vertical) * scale));
+                // These are device-pixel measurements. WinForms may already have scaled the
+                // original MinimumSize before the painter is attached (including hidden controls).
+                button.MinimumSize = new Size(width, height);
+                if (contentSized) button.Size = button.MinimumSize;
+            }
+            button.HandleCreated += (_, _) => SizeToContent();
+            button.FontChanged += (_, _) => SizeToContent();
+            button.TextChanged += (_, _) => SizeToContent();
+            button.DpiChangedAfterParent += (_, _) => SizeToContent();
+            SizeToContent();
+            button.Disposed += (_, _) => Elevation.Dispose();
+        }
     }
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Button, State> states = new();
+
+    internal static bool HasBackdrop(Control control) => control is CaptureModeButton or ThemeOption || control is Button button && states.TryGetValue(button, out _);
+
+    internal static void PaintBackdrop(Control control, Graphics graphics)
+    {
+        if (control is CaptureModeButton mode) mode.PaintBackdrop(graphics);
+        else if (control is ThemeOption theme) theme.PaintBackdrop(graphics);
+        else if (control is Button button && states.TryGetValue(button, out State? state)) Paint(button, state, graphics, matte: true);
+    }
+
+    internal static Color Coverage(float amount)
+    {
+        int value = Math.Clamp((int)Math.Round(amount * 255), 0, 255);
+        return Color.FromArgb(value, value, value);
+    }
 
     internal static void Apply(Button button, CapturePalette palette, bool primary)
     {
@@ -102,15 +154,15 @@ internal static class CaptureButtonPainter
             state = new State(button);
             states.Add(button, state);
             State tracked = state;
-            button.MouseEnter += (_, _) => tracked.Hover.SpringTo(1);
-            button.MouseLeave += (_, _) => { tracked.Hover.SpringTo(0); tracked.Press.SpringTo(0, 90); };
+            button.MouseEnter += (_, _) => tracked.Hover.SpringTo(1, ButtonElevation.ResponseMilliseconds);
+            button.MouseLeave += (_, _) => { tracked.Hover.SpringTo(0, ButtonElevation.ResponseMilliseconds); tracked.Press.SpringTo(0, 90); };
             button.MouseDown += (_, e) => { if (e.Button == MouseButtons.Left) tracked.Press.SnapTo(1); };
             button.MouseUp += (_, _) => tracked.Press.SpringTo(0, 110);
-            if (button.Parent is PreviewZoomBar)
-                button.MouseCaptureChanged += (_, _) => { if (!button.Capture) tracked.Press.SpringTo(0, 110); };
+            button.MouseCaptureChanged += (_, _) => { if (!button.Capture) tracked.Press.SpringTo(0, 110); };
             button.KeyDown += (_, e) => { if (e.KeyCode == Keys.Space) tracked.Press.SnapTo(1); };
             button.KeyUp += (_, _) => tracked.Press.SpringTo(0, 110);
             button.GotFocus += (_, _) => button.Invalidate();
+            button.ChangeUICues += (_, _) => button.Invalidate();
             button.LostFocus += (_, _) => { tracked.Press.SpringTo(0); button.Invalidate(); };
             button.EnabledChanged += (_, _) =>
             {
@@ -128,7 +180,7 @@ internal static class CaptureButtonPainter
         button.Invalidate();
     }
 
-    private static void Paint(Button button, State state, Graphics g)
+    private static void Paint(Button button, State state, Graphics g, bool matte = false)
     {
         CapturePalette p = state.Palette;
         float s = button.DeviceDpi / 96f;
@@ -140,21 +192,57 @@ internal static class CaptureButtonPainter
             background = CaptureDrawing.Blend(background, button.FlatAppearance.MouseOverBackColor, state.Hover.Value);
             background = CaptureDrawing.Blend(background, button.FlatAppearance.MouseDownBackColor, state.Press.Value);
         }
-        g.Clear(button.Parent?.BackColor ?? p.Background);
+        bool glassParent = (button.Parent?.BackColor ?? p.Background) == p.Background;
+        if (matte) background = Coverage(quiet && glassParent ? (1 - state.Hover.Value) * (1 - state.Press.Value) : 0);
+        PreviewZoomBar? zoomBar = !matte ? button.Parent as PreviewZoomBar : null;
+        if (zoomBar != null)
+        {
+            zoomBar.PaintSurface(g, button.Location);
+            // Keep labels and glyphs opaque; blend only the hover/pressed feedback over the material.
+            if (quiet)
+                background = Color.FromArgb((int)Math.Round(255 * (1 - (1 - state.Hover.Value) * (1 - state.Press.Value))), background);
+        }
+        else g.Clear(matte ? (glassParent ? Color.White : Color.Black) : button.Parent?.BackColor ?? p.Background);
         g.SmoothingMode = SmoothingMode.AntiAlias;
-        float borderWidth = (button.Focused ? 1.75f : 1) * s;
-        float inset = Math.Max(borderWidth / 2, .5f + state.Press.Value * .6f * s);
-        using GraphicsPath path = CaptureDrawing.Rounded(new RectangleF(inset, inset, button.Width - 2 * inset, button.Height - 2 * inset), 12 * s);
+        bool focus = button.Focused && button.IsHandleCreated &&
+            (NativeMethods.SendMessage(button.Handle, (uint)WindowsMessages.QUERYUISTATE, IntPtr.Zero, IntPtr.Zero).ToInt64() & 1) == 0;
+        float borderWidth = (focus ? 1.75f : 1) * s;
+        bool material = button.Parent is not PreviewZoomBar;
+        float elevation = button.Enabled && button.Parent is not PreviewZoomBar && !SystemInformation.HighContrast
+            ? state.Hover.Value * (1 - state.Press.Value) : 0;
+        float lift = UiMotion.Enabled ? elevation * ButtonElevation.Lift * s : 0;
+        RectangleF face = material ? ButtonElevation.FaceBounds(button.ClientSize, s) :
+            new RectangleF(s, s, button.Width - 2 * s, button.Height - 2 * s);
+        if (material)
+        {
+            face.Offset(0, -lift);
+            face.Inflate(-state.Press.Value * .5f * s, -state.Press.Value * .5f * s);
+        }
+        state.Elevation.PaintShadow(g, button.ClientSize, s, p.Background.GetBrightness() < .5f, elevation, unified: true);
+        using GraphicsPath path = CaptureDrawing.Rounded(face, material ? ButtonElevation.Radius(face, s) : 12 * s);
         using SolidBrush fill = new(background);
-        using Pen border = new(primary || button.Focused ? p.Accent : p.Border, borderWidth);
         g.FillPath(fill, path);
-        if (!quiet || button.Focused) g.DrawPath(border, path);
+        if (focus || SystemInformation.HighContrast)
+        {
+            using Pen border = new(matte ? Color.Black : focus ? p.Accent : p.Border, borderWidth);
+            g.DrawPath(border, path);
+        }
         Color ink = primary ? p.AccentText : p.Text;
         if (!button.Enabled) ink = p.Secondary;
+        if (matte) ink = Color.Black;
+        // Keep GDI text at its original coordinates and weight throughout hover.
+        // Only the surface and shadow convey elevation; resampling text can change its apparent weight.
+        PaintContent(button, state, g, ink, matte);
+    }
+
+    private static void PaintContent(Button button, State state, Graphics g, Color ink, bool matte)
+    {
+        float s = button.DeviceDpi / 96f;
+        CapturePalette p = state.Palette;
         if (button.Parent is PreviewZoomBar && button.Name is "previewZoomIn" or "previewZoomOut")
         {
             // Animate the glyph inside its fixed native hit target, with matching stroke weights at every DPI.
-            if (button.Enabled) ink = CaptureDrawing.Blend(ink, p.Accent, Math.Max(state.Hover.Value * .55f, state.Press.Value));
+            if (!matte && button.Enabled) ink = CaptureDrawing.Blend(ink, p.Accent, Math.Max(state.Hover.Value * .55f, state.Press.Value));
             float half = 5.5f * s * (1 - .1f * state.Press.Value);
             float x = button.Width / 2f, y = button.Height / 2f;
             using Pen symbol = new(ink, 1.7f * s) { StartCap = LineCap.Round, EndCap = LineCap.Round };
@@ -165,8 +253,9 @@ internal static class CaptureButtonPainter
         if (button.Name is "editButton" or "copyButton" or "saveButton" or "settingsButton")
         {
             int iconSize = (int)Math.Round(16 * s);
-            int gap = (int)Math.Round(5 * s);
-            int available = Math.Max(0, button.Width - (int)Math.Round(12 * s));
+            int gap = (int)Math.Round(ButtonSpacing.IconGap * s);
+            RectangleF face = ButtonElevation.FaceBounds(button.ClientSize, s);
+            int available = Math.Max(0, (int)face.Width - (int)Math.Round(2 * ButtonSpacing.Horizontal * s));
             int textWidth = TextRenderer.MeasureText(button.Text, button.Font, Size.Empty,
                 TextFormatFlags.NoPadding | TextFormatFlags.SingleLine).Width;
             int width = Math.Min(available, iconSize + gap + textWidth);
@@ -182,8 +271,12 @@ internal static class CaptureButtonPainter
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine | UiLanguage.TextDirection);
             return;
         }
-        TextRenderer.DrawText(g, button.Text, button.Font, button.ClientRectangle, ink,
-            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | UiLanguage.TextDirection);
+        Rectangle text = button.Parent is PreviewZoomBar ? button.ClientRectangle :
+            Rectangle.Round(ButtonElevation.FaceBounds(button.ClientSize, s));
+        if (button.Parent is not PreviewZoomBar) text.Inflate(-(int)(ButtonSpacing.Horizontal * s), 0);
+        TextRenderer.DrawText(g, button.Text, button.Font, text, ink,
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis |
+            TextFormatFlags.NoPadding | TextFormatFlags.SingleLine | UiLanguage.TextDirection);
     }
 }
 
@@ -247,6 +340,9 @@ internal static class CaptureDrawing
 internal sealed class CaptureModeButton : Button
 {
     private readonly UiTween hover, press;
+    private readonly ButtonElevation elevation = new();
+    private Font? titleFont, shortcutFont;
+    private int titleHeight, shortcutHeight;
     internal string Kind { get; init; } = "region";
     internal string Shortcut { get; set; } = "";
     internal CapturePalette Palette { get; set; } = CapturePalette.Light;
@@ -265,6 +361,7 @@ internal sealed class CaptureModeButton : Button
     protected override void OnMouseLeave(EventArgs e) { hover.SpringTo(0); press.SpringTo(0); base.OnMouseLeave(e); }
     protected override void OnMouseDown(MouseEventArgs e) { if (e.Button == MouseButtons.Left) press.SnapTo(1); base.OnMouseDown(e); }
     protected override void OnMouseUp(MouseEventArgs e) { press.SpringTo(0, 110); base.OnMouseUp(e); }
+    protected override void OnMouseCaptureChanged(EventArgs e) { if (!Capture) press.SpringTo(0, 110); base.OnMouseCaptureChanged(e); }
     protected override void OnKeyDown(KeyEventArgs e) { if (e.KeyCode == Keys.Space) press.SnapTo(1); base.OnKeyDown(e); }
     protected override void OnKeyUp(KeyEventArgs e) { press.SpringTo(0, 110); base.OnKeyUp(e); }
     protected override void OnGotFocus(EventArgs e) { Invalidate(); base.OnGotFocus(e); }
@@ -282,35 +379,70 @@ internal sealed class CaptureModeButton : Button
 
     protected override void OnPaint(PaintEventArgs e)
     {
-        Graphics g = e.Graphics;
+        Render(e.Graphics, matte: false);
+    }
+
+    internal void PaintBackdrop(Graphics graphics) => Render(graphics, matte: true);
+
+    private void Render(Graphics g, bool matte)
+    {
         CapturePalette p = Palette;
         float s = DeviceDpi / 96f;
         g.SmoothingMode = SmoothingMode.AntiAlias;
         Color parent = Parent?.BackColor ?? p.Background;
-        g.Clear(parent);
-        float inset = 1 + press.Value * s;
-        using GraphicsPath path = CaptureDrawing.Rounded(new RectangleF(inset, inset, Width - 2 * inset, Height - 2 * inset), 14 * s);
-        Color background = CaptureDrawing.Blend(parent, p.Surface, hover.Value);
+        bool glassParent = parent == p.Background;
+        g.Clear(matte ? (glassParent ? Color.White : Color.Black) : parent);
+        RectangleF face = ButtonElevation.FaceBounds(ClientSize, s);
+        float verticalInset = 4 * s * (UiMotion.Enabled ? 1 - hover.Value : 0);
+        face.Inflate(-press.Value * s, -verticalInset - press.Value * s);
+        elevation.PaintShadow(g, ClientSize, s, p.Background.GetBrightness() < .5f,
+            Enabled && !SystemInformation.HighContrast ? hover.Value * (1 - press.Value) : 0, unified: true);
+        using GraphicsPath path = CaptureDrawing.Rounded(face, ButtonElevation.Radius(face, s));
+        Color background = CaptureDrawing.Blend(parent, ButtonElevation.Surface(p), hover.Value);
         background = CaptureDrawing.Blend(background, p.Hover, press.Value * .10f);
+        if (matte) background = CaptureButtonPainter.Coverage(glassParent ? (1 - hover.Value) * (1 - press.Value * .10f) : 0);
         using SolidBrush fill = new(background);
         g.FillPath(fill, path);
         if (Focused && ShowFocusCues)
         {
-            using Pen focus = new(p.Accent, 1.5f * s);
-            using GraphicsPath ring = CaptureDrawing.Rounded(new RectangleF(3 * s, 3 * s, Width - 6 * s, Height - 6 * s), 12 * s);
+            using Pen focus = new(matte ? Color.Black : p.Accent, 1.5f * s);
+            using GraphicsPath ring = CaptureDrawing.Rounded(face, ButtonElevation.Radius(face, s));
             g.DrawPath(focus, ring);
         }
-        Color ink = p.Text;
-        Color secondary = p.Secondary;
+        Color ink = matte ? Color.Black : p.Text;
+        Color secondary = matte ? Color.Black : p.Secondary;
         float cy = Height / 2f + press.Value * .5f * s;
         Color iconInk = CaptureDrawing.Blend(p.Secondary, p.Accent, hover.Value);
-        CaptureDrawing.Icon(g, Kind, new RectangleF(16 * s, cy - 11 * s, 22 * s, 22 * s), iconInk);
-        using Font title = new(Font.FontFamily, 11, FontStyle.Bold);
-        using Font shortcut = new("Segoe UI", 10);
-        TextRenderer.DrawText(g, Text, title, new Rectangle((int)(52 * s), (int)(cy - 26 * s), Width - (int)(60 * s), (int)(36 * s)),
-            ink, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.WordBreak | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | UiLanguage.TextDirection);
-        TextRenderer.DrawText(g, Shortcut.Replace(" + ", "+"), shortcut, new Rectangle((int)(52 * s), (int)(cy + 10 * s), Width - (int)(60 * s), (int)(22 * s)),
+        if (matte) iconInk = Color.Black;
+        float left = ButtonElevation.FaceBounds(ClientSize, s).Left;
+        CaptureDrawing.Icon(g, Kind, new RectangleF(left + ButtonSpacing.Leading * s, cy - 10 * s, 20 * s, 20 * s), iconInk);
+        if (titleFont == null || shortcutFont == null)
+        {
+            titleFont = new(Font.FontFamily, 11, FontStyle.Bold);
+            shortcutFont = new("Segoe UI", 10);
+            titleHeight = TextRenderer.MeasureText("Ag", titleFont).Height;
+            shortcutHeight = TextRenderer.MeasureText("Ag", shortcutFont).Height;
+        }
+        int textLeft = (int)(left + (ButtonSpacing.Leading + 20 + ButtonSpacing.IconGap) * s);
+        int textWidth = Math.Max(1, (int)(ButtonElevation.FaceBounds(ClientSize, s).Right - ButtonSpacing.Horizontal * s) - textLeft);
+        int gap = (int)Math.Round(6 * s);
+        int top = (int)Math.Round(cy - (titleHeight + gap + shortcutHeight) / 2f);
+        TextRenderer.DrawText(g, Text, titleFont, new Rectangle(textLeft, top, textWidth, titleHeight),
+            ink, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | UiLanguage.TextDirection);
+        TextRenderer.DrawText(g, Shortcut.Replace(" + ", "+"), shortcutFont, new Rectangle(textLeft, top + titleHeight + gap, textWidth, shortcutHeight),
             secondary, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+    }
+    private void ReleaseTextMetrics()
+    {
+        titleFont?.Dispose(); titleFont = null;
+        shortcutFont?.Dispose(); shortcutFont = null;
+    }
+    protected override void OnFontChanged(EventArgs e) { ReleaseTextMetrics(); base.OnFontChanged(e); }
+    protected override void OnDpiChangedAfterParent(EventArgs e) { ReleaseTextMetrics(); base.OnDpiChangedAfterParent(e); }
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) { elevation.Dispose(); ReleaseTextMetrics(); }
+        base.Dispose(disposing);
     }
 }
 
@@ -330,6 +462,7 @@ internal sealed partial class PreviewCanvas : PictureBox
         SetStyle(ControlStyles.Selectable, true);
         AccessibleName = L("ImagePreview");
         reveal = new(this, Invalidate);
+        viewportTimer = new ScrollFrameClock(this, AdvanceViewport);
         InitializeViewport();
     }
 
@@ -396,6 +529,7 @@ internal sealed partial class PreviewCanvas : PictureBox
             }
             else PaintImage(g);
             PaintViewportChrome(g);
+            PaintZoomControlsInCurrentFrame();
             return;
         }
         EndReveal();

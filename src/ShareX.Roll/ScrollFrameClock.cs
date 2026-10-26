@@ -4,30 +4,89 @@ using System.Runtime.InteropServices;
 
 namespace ShareX.Roll;
 
-internal sealed class ScrollFrameClock(Control owner, Action tick) : IDisposable
+internal sealed class ScrollFrameClock : IDisposable
 {
+    [ThreadStatic] private static Run? shared;
+    private readonly Control owner;
+    private readonly Action tick;
     private Run? active;
+    private bool disposed;
     internal bool Enabled => active != null;
+
+    internal ScrollFrameClock(Control owner, Action tick)
+    {
+        this.owner = owner;
+        this.tick = tick;
+    }
 
     internal void Start()
     {
-        if (active != null || owner.IsDisposed || !owner.IsHandleCreated) return;
-        active = new Run(owner, tick);
-        ThreadPool.QueueUserWorkItem(static state => ((Run)state!).Pump(), active);
+        if (disposed || active != null || owner.IsDisposed || !owner.IsHandleCreated) return;
+        Run? run = shared;
+        bool start = run == null;
+        if (start) shared = run = new Run();
+        active = run;
+        run!.Add(this);
+        if (start) ThreadPool.QueueUserWorkItem(static state => ((Run)state!).Pump(), run);
     }
 
     internal void Stop()
     {
-        if (active is { } run) run.Cancelled = true;
+        Run? run = active;
         active = null;
+        if (run == null) return;
+        run.Remove(this);
+        if (run.Cancelled && ReferenceEquals(shared, run)) shared = null;
     }
 
-    public void Dispose() => Stop();
+    public void Dispose() { Stop(); disposed = true; }
 
-    private sealed class Run(Control owner, Action tick)
+    // All clocks registered on one UI thread share one worker and at most one
+    // queued callback. Concurrent hover, scrolling and zoom never grow the queue.
+    private sealed class Run
     {
         internal volatile bool Cancelled;
+        private readonly List<ScrollFrameClock> clocks = new();
+        private readonly List<ScrollFrameClock> frame = new();
+        private readonly WindowsFormsSynchronizationContext context =
+            SynchronizationContext.Current as WindowsFormsSynchronizationContext ?? new WindowsFormsSynchronizationContext();
         private int pending;
+
+        internal void Add(ScrollFrameClock clock)
+        {
+            clocks.Add(clock);
+        }
+
+        internal void Remove(ScrollFrameClock clock)
+        {
+            clocks.Remove(clock);
+            if (clocks.Count == 0) Cancelled = true;
+        }
+
+        private void Dispatch()
+        {
+            try
+            {
+                // Callbacks may remove themselves or hide/dispose other owners.
+                // Reuse a stable batch so stop/restart cannot tick a clock twice.
+                frame.Clear();
+                frame.AddRange(clocks);
+                foreach (ScrollFrameClock clock in frame)
+                {
+                    if (Cancelled) break;
+                    if (!ReferenceEquals(clock.active, this)) continue;
+                    if (clock.owner.IsDisposed || !clock.owner.IsHandleCreated) clock.Stop();
+                    else
+                    {
+                        // Hiding an ancestor need not raise VisibleChanged on its children.
+                        // Give the owner one final tick to settle and release visual resources.
+                        clock.tick();
+                        if (!clock.owner.Visible && ReferenceEquals(clock.active, this)) clock.Stop();
+                    }
+                }
+            }
+            finally { frame.Clear(); Interlocked.Exchange(ref pending, 0); }
+        }
 
         internal void Pump()
         {
@@ -46,13 +105,14 @@ internal sealed class ScrollFrameClock(Control owner, Action tick) : IDisposable
                 if (Cancelled || Interlocked.CompareExchange(ref pending, 1, 0) != 0) continue;
                 try
                 {
-                    owner.BeginInvoke((Action)(() =>
-                    {
-                        try { if (!Cancelled && !owner.IsDisposed) tick(); }
-                        finally { Interlocked.Exchange(ref pending, 0); }
-                    }));
+                    // The UI thread's marshaling control survives individual owner handles.
+                    context.Post(static state => ((Run)state!).Dispatch(), this);
                 }
-                catch (InvalidOperationException) { Cancelled = true; }
+                catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.InvalidAsynchronousStateException)
+                {
+                    Cancelled = true;
+                    Interlocked.Exchange(ref pending, 0);
+                }
             }
         }
 

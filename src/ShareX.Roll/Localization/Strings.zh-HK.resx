@@ -288,4 +288,8 @@
   <data xml:space="preserve" name="SaveScreenshot"><value>儲存擷取畫面</value></data>
   <data xml:space="preserve" name="SaveFolderUnavailableTitle"><value>預設資料夾無法使用，請選擇其他資料夾儲存</value></data>
   <data xml:space="preserve" name="NoSaveFolderSelected"><value>未選擇資料夾</value></data>
+  <data xml:space="preserve" name="Transparency"><value>透明模式</value></data>
+  <data xml:space="preserve" name="TransparencyHint"><value>使用毛玻璃視窗背景，關閉後使用實色背景。</value></data>
+  <data xml:space="preserve" name="TransparencyUnavailable"><value>系統未開啟透明效果、已啟用高對比度或不支援此效果，目前使用實色背景。</value></data>
+  <data xml:space="preserve" name="TransparencyPreview"><value>已預覽透明模式。儲存後生效，返回將放棄變更。</value></data>
 </root>

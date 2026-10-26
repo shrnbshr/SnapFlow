@@ -25,23 +25,29 @@ internal static class UiMotion
 internal sealed class UiTween : IDisposable
 {
     private readonly Control owner;
-    private readonly System.Windows.Forms.Timer timer = new() { Interval = 15 };
+    private readonly System.Windows.Forms.Timer? timer;
+    private readonly ScrollFrameClock? frameClock;
     private readonly Stopwatch clock = new();
     private readonly Action changed;
     private float from, target, velocity;
     private double lastSample, frequency;
-    private int duration;
+    private int duration, revision;
     private bool disposed, spring;
     internal float Value { get; private set; }
     internal float Velocity => velocity;
-    internal bool IsRunning => timer.Enabled;
+    internal bool IsRunning => frameClock?.Enabled ?? timer?.Enabled == true;
     internal event Action? Completed;
 
-    internal UiTween(Control owner, Action changed)
+    internal UiTween(Control owner, Action changed, bool useFrameClock = true)
     {
         this.owner = owner;
         this.changed = changed;
-        timer.Tick += (_, _) => Tick();
+        if (useFrameClock) frameClock = new ScrollFrameClock(owner, Tick);
+        else
+        {
+            timer = new System.Windows.Forms.Timer { Interval = 15 };
+            timer.Tick += (_, _) => Tick();
+        }
         owner.Disposed += (_, _) => Dispose();
         owner.VisibleChanged += (_, _) => { if (!owner.Visible) SnapTo(target); };
         owner.HandleDestroyed += (_, _) => SnapTo(target);
@@ -52,11 +58,11 @@ internal sealed class UiTween : IDisposable
         if (disposed) return;
         if (!UiMotion.Enabled || !owner.Visible || !owner.IsHandleCreated || milliseconds <= 0)
         {
-            SnapTo(value);
-            Completed?.Invoke();
+            CompleteAt(value);
             return;
         }
-        if (timer.Enabled && !spring && target == value && duration == milliseconds) return;
+        if (IsRunning && !spring && target == value && duration == milliseconds) return;
+        revision++;
         spring = false;
         velocity = 0;
         from = Value;
@@ -64,7 +70,7 @@ internal sealed class UiTween : IDisposable
         duration = milliseconds;
         if (Math.Abs(target - from) < .001f) { SnapTo(value); return; }
         clock.Restart();
-        timer.Start();
+        StartClock();
     }
 
     // Interactive feedback retains its on-screen position and velocity when the target changes.
@@ -75,12 +81,12 @@ internal sealed class UiTween : IDisposable
         value = Math.Clamp(value, 0, 1);
         if (!UiMotion.Enabled || !owner.Visible || !owner.IsHandleCreated || responseMilliseconds <= 0)
         {
-            SnapTo(value);
-            Completed?.Invoke();
+            CompleteAt(value);
             return;
         }
-        if (timer.Enabled && spring && target == value) return;
-        if (!spring || !timer.Enabled) velocity = 0;
+        if (IsRunning && spring && target == value && duration == responseMilliseconds) return;
+        revision++;
+        if (!spring || !IsRunning) velocity = 0;
         spring = true;
         target = value;
         duration = responseMilliseconds;
@@ -92,13 +98,14 @@ internal sealed class UiTween : IDisposable
         }
         lastSample = 0;
         clock.Restart();
-        timer.Start();
+        StartClock();
     }
 
     internal void SnapTo(float value)
     {
         if (disposed) return;
-        timer.Stop();
+        revision++;
+        StopClock();
         clock.Stop();
         velocity = 0;
         Value = target = value;
@@ -108,6 +115,7 @@ internal sealed class UiTween : IDisposable
     private void Tick()
     {
         if (disposed || owner.IsDisposed) { Dispose(); return; }
+        if (!owner.Visible) { Complete(); return; }
         if (spring)
         {
             if (!UiMotion.Enabled) { Complete(); return; }
@@ -131,25 +139,35 @@ internal sealed class UiTween : IDisposable
             return;
         }
         float progress = !UiMotion.Enabled ? 1 : Math.Clamp((float)clock.Elapsed.TotalMilliseconds / duration, 0, 1);
+        if (progress >= 1) { Complete(); return; }
         float eased = 1 - MathF.Pow(1 - progress, 3);
         Value = from + (target - from) * eased;
         changed();
-        if (progress >= 1) { timer.Stop(); clock.Stop(); Completed?.Invoke(); }
     }
 
-    private void Complete()
+    private void Complete() => CompleteAt(target);
+
+    private void CompleteAt(float value)
     {
-        SnapTo(target);
-        Completed?.Invoke();
+        int completedRevision = revision + 1;
+        SnapTo(value);
+        // A final-frame layout/paint callback can immediately start a new animation.
+        // Its completion belongs to that new run, rather than the run just stopped.
+        if (!disposed && revision == completedRevision) Completed?.Invoke();
     }
+
+    private void StartClock() { if (frameClock != null) frameClock.Start(); else timer?.Start(); }
+    private void StopClock() { frameClock?.Stop(); timer?.Stop(); }
 
     public void Dispose()
     {
         if (disposed) return;
         disposed = true;
-        timer.Stop();
+        revision++;
+        timer?.Stop();
         clock.Stop();
-        timer.Dispose();
+        timer?.Dispose();
+        frameClock?.Dispose();
     }
 }
 
@@ -162,12 +180,15 @@ internal sealed class PageTransition : Control
     private readonly int direction;
     internal event Action? Finished;
     internal bool IsAnimating => progress.IsRunning;
+    internal (int BeforeX, int AfterX, float Opacity) MaterialPlacement =>
+        ((int)(-direction * progress.Value * 8 * (DeviceDpi / 96f)),
+            (int)(direction * (1 - progress.Value) * 18 * (DeviceDpi / 96f)), progress.Value);
 
-    internal PageTransition(Bitmap before, Color background, bool forward)
+    internal PageTransition(Bitmap before, Color background, bool forward, bool translate = true)
     {
         this.before = new MotionFrame(before);
         surface = new MotionFrame(this.before.Size);
-        direction = forward ? 1 : -1;
+        direction = translate ? (forward ? 1 : -1) : 0;
         BackColor = background;
         TabStop = false;
         AccessibleRole = AccessibleRole.None;
@@ -281,6 +302,7 @@ public sealed partial class MainForm
         {
             page.DrawToBitmap(bitmap, new Rectangle(Point.Empty, page.Size));
             TransitionSnapshot.RestoreNativeTextColors(page, bitmap);
+            windowBackdrop?.RememberSnapshot(page, bitmap);
             return bitmap;
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or ExternalException)
@@ -290,18 +312,129 @@ public sealed partial class MainForm
         }
     }
 
-    private PageTransition? PreparePageChange(Control page, bool forward)
+    [DllImport("user32.dll")]
+    private static extern bool LogicalToPhysicalPointForPerMonitorDPI(nint window, ref Point point);
+
+    private Bitmap? SnapshotPresentedPage(Control page)
+    {
+        if (!UiMotion.Enabled || !Visible || !page.Visible || page.Width <= 0 || page.Height <= 0 ||
+            ShareX.HelpersLib.NativeMethods.GetForegroundWindow() != Handle) return null;
+        Bitmap? bitmap = null;
+        try
+        {
+            Point first = page.PointToScreen(Point.Empty), last = page.PointToScreen(new Point(page.Width, page.Height));
+            if (!LogicalToPhysicalPointForPerMonitorDPI(page.Handle, ref first) || !LogicalToPhysicalPointForPerMonitorDPI(page.Handle, ref last)) return null;
+            using Bitmap captured = new ShareX.ScreenCaptureLib.Screenshot { RemoveOutsideScreenArea = false }
+                .CaptureRectangle(Rectangle.FromLTRB(first.X, first.Y, last.X, last.Y));
+            bitmap = captured.Size == page.Size ? (Bitmap)captured.Clone() : new Bitmap(captured, page.Size);
+            RemoveOccludingWindows(bitmap, page, Rectangle.FromLTRB(first.X, first.Y, last.X, last.Y));
+            windowBackdrop?.RememberOpaqueSnapshot(bitmap);
+            Bitmap result = bitmap;
+            bitmap = null;
+            return result;
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or ExternalException) { return null; }
+        finally { bitmap?.Dispose(); }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PresentedRectangle { public int Left, Top, Right, Bottom; }
+    [DllImport("user32.dll")] private static extern nint GetWindow(nint window, uint command);
+    [DllImport("user32.dll")] private static extern nint WindowFromPhysicalPoint(Point point);
+    [DllImport("user32.dll")] private static extern nint GetAncestor(nint window, uint flags);
+    [DllImport("user32.dll")] private static extern nint SetThreadDpiAwarenessContext(nint context);
+    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool IsWindowVisible(nint window);
+    [DllImport("dwmapi.dll")] private static extern int DwmGetWindowAttribute(nint window, int attribute, out PresentedRectangle value, int size);
+    [DllImport("dwmapi.dll", EntryPoint = "DwmGetWindowAttribute")] private static extern int DwmGetWindowInteger(nint window, int attribute, out int value, int size);
+
+    private void RemoveOccludingWindows(Bitmap bitmap, Control page, Rectangle physicalBounds)
+    {
+        Bitmap? own = null;
+        List<Rectangle> replacements = new();
+        nint previousDpi = SetThreadDpiAwarenessContext(-4);
+        if (previousDpi == 0) throw new InvalidOperationException("Physical window coordinates are unavailable.");
+        try
+        {
+            for (nint window = GetWindow(Handle, 3); window != 0; window = GetWindow(window, 3))
+            {
+                if (!IsWindowVisible(window) || DwmGetWindowInteger(window, 14, out int cloaked, sizeof(int)) >= 0 && cloaked != 0 ||
+                    DwmGetWindowAttribute(window, 9, out PresentedRectangle bounds, Marshal.SizeOf<PresentedRectangle>()) < 0) continue;
+                Rectangle covered = Rectangle.Intersect(physicalBounds,
+                    Rectangle.Inflate(Rectangle.FromLTRB(bounds.Left, bounds.Top, bounds.Right, bounds.Bottom), 12, 12));
+                if (covered.IsEmpty) continue;
+                float sx = (float)bitmap.Width / physicalBounds.Width, sy = (float)bitmap.Height / physicalBounds.Height;
+                Rectangle area = Rectangle.Intersect(new Rectangle(Point.Empty, bitmap.Size), Rectangle.FromLTRB(
+                    (int)Math.Floor((covered.Left - physicalBounds.Left) * sx), (int)Math.Floor((covered.Top - physicalBounds.Top) * sy),
+                    (int)Math.Ceiling((covered.Right - physicalBounds.Left) * sx), (int)Math.Ceiling((covered.Bottom - physicalBounds.Top) * sy)));
+                if (area.Width <= 0 || area.Height <= 0) continue;
+                for (int y = area.Top; y < area.Bottom; y += 8)
+                {
+                    int start = -1, bottom = Math.Min(y + 8, area.Bottom);
+                    for (int x = area.Left; x <= area.Right; x += 8)
+                    {
+                        int right = Math.Min(x + 8, area.Right);
+                        Point point = new(physicalBounds.Left + (int)((x + right) / 2f / sx),
+                            physicalBounds.Top + (int)((y + bottom) / 2f / sy));
+                        bool foreign = x < area.Right && GetAncestor(WindowFromPhysicalPoint(point), 2) != Handle;
+                        if (foreign && start < 0) start = x;
+                        if (!foreign && start >= 0)
+                        {
+                            replacements.Add(Rectangle.FromLTRB(start, y, Math.Min(x, area.Right), bottom)); start = -1;
+                        }
+                        if (right == area.Right)
+                        {
+                            if (start >= 0) replacements.Add(Rectangle.FromLTRB(start, y, area.Right, bottom));
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        finally { if (previousDpi != 0) SetThreadDpiAwarenessContext(previousDpi); }
+        if (replacements.Count == 0) return;
+        try
+        {
+            own = SnapshotPage(page);
+            if (own == null) throw new InvalidOperationException("The occluded application image is unavailable.");
+            foreach (Rectangle replacement in replacements) CopyOpaqueRegion(own, bitmap, replacement);
+        }
+        finally { own?.Dispose(); }
+    }
+
+    private static void CopyOpaqueRegion(Bitmap own, Bitmap bitmap, Rectangle area)
+    {
+        var input = own.LockBits(area, System.Drawing.Imaging.ImageLockMode.ReadOnly, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+        try
+        {
+            var output = bitmap.LockBits(area, System.Drawing.Imaging.ImageLockMode.WriteOnly, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            try
+            {
+                int[] row = new int[area.Width];
+                for (int y = 0; y < area.Height; y++)
+                {
+                    Marshal.Copy(nint.Add(input.Scan0, y * input.Stride), row, 0, row.Length);
+                    for (int x = 0; x < row.Length; x++) row[x] |= unchecked((int)0xFF000000);
+                    Marshal.Copy(row, 0, nint.Add(output.Scan0, y * output.Stride), row.Length);
+                }
+            }
+            finally { bitmap.UnlockBits(output); }
+        }
+        finally { own.UnlockBits(input); }
+    }
+
+    private PageTransition? PreparePageChange(Control page, bool forward, bool crossFade = false)
     {
         PageTransition? previous = pageTransition;
         // Keep the current visual, including an interrupted animation, over the live pages.
-        Bitmap? before = SnapshotPage(previous ?? page);
+        Bitmap? before = crossFade ? SnapshotPresentedPage(previous ?? page) ?? SnapshotPage(previous ?? page) : SnapshotPage(previous ?? page);
         if (before == null) { EndPageTransition(); return null; }
-        PageTransition transition = new(before, BackColor, forward)
+        PageTransition transition = new(before, BackColor, forward, translate: !crossFade)
         {
             Name = "pageTransition", Bounds = ClientRectangle,
             Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
         };
         pageTransition = transition;
+        windowBackdrop?.BeginTransition(transition, before);
         transition.Finished += () =>
         {
             if (ReferenceEquals(pageTransition, transition)) pageTransition = null;
@@ -315,11 +448,17 @@ public sealed partial class MainForm
         return transition;
     }
 
-    private void AnimatePageChange(PageTransition? transition, Control page)
+    private void AnimatePageChange(PageTransition? transition, Control page, bool cacheSettings = false)
     {
         if (transition == null || !ReferenceEquals(pageTransition, transition)) return;
-        Bitmap? after = SnapshotPage(page);
+        Bitmap? after = cacheSettings ? SettingsSnapshot(page) : null;
+        if (after == null)
+        {
+            after = SnapshotPage(page);
+            if (cacheSettings && after != null) RememberSettingsSnapshot(page, after);
+        }
         if (after == null) { EndPageTransition(); return; }
         transition.Start(after);
+        windowBackdrop?.CompleteTransition(transition, after);
     }
 }

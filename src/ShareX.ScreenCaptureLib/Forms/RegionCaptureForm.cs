@@ -52,6 +52,8 @@ namespace ShareX.ScreenCaptureLib
         public event Action<string> EditorFeedback;
         public bool IsEditorCropPending => ShapeManager?.CurrentShape is CropTool;
         public ShapeType EditorTool => ShapeManager.CurrentTool;
+        // Host materials must preserve image pixels even when they match the surrounding UI color.
+        public RectangleF EditorImageBounds => CanvasRectangle.Scale(ZoomFactor);
         public Color EditorAnnotationColor => ShapeManager.EditorAnnotationColor;
         public bool CanChangeEditorAnnotationColor => ShapeManager.CanChangeEditorAnnotationColor;
         public void SetEditorAnnotationColor(Color color) => ShapeManager.SetEditorAnnotationColor(color);

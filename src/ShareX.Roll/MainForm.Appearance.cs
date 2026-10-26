@@ -15,6 +15,15 @@ public sealed partial class MainForm
     private TableLayoutPanel previewFrame = null!;
     private CapturePalette appearancePalette = CapturePalette.Current;
     private bool? frameUsesDarkMode;
+    private WindowBackdrop? windowBackdrop;
+    private bool? transparencyPreview;
+
+    private void ApplyWindowBackdrop()
+    {
+        bool enabled = transparencyPreview ?? preferences.TransparencyEnabled;
+        windowBackdrop?.Apply(appearancePalette, enabled);
+        preview.ZoomTransparencyEnabled = enabled;
+    }
 
     private void InitializeAppearance()
     {
@@ -28,9 +37,11 @@ public sealed partial class MainForm
         {
             frameUsesDarkMode = null;
             ApplyWindowFrameAppearance();
+            ApplyWindowBackdrop();
         };
         UiMotion.UserEnabled = preferences.AnimationsEnabled;
         InitializeWorkspaceLayout();
+        windowBackdrop = new WindowBackdrop(this);
         UiLanguage.ApplyTextDirection(this);
         VisibleChanged += (_, _) => { if (!Visible) EndPageTransition(); };
         copy.EnabledChanged += (_, _) => RefreshPreviewToolbar();
@@ -86,7 +97,8 @@ public sealed partial class MainForm
         preview.Invalidate();
         if (scrollForm is { IsDisposed: false }) ApplyScrollingColors(scrollForm, palette);
         // The library theme walks all child controls. Restore the settings surfaces afterwards.
-        settingsPage?.RefreshSystemAppearance();
+        (settingsPage ?? cachedSettingsPage)?.RefreshSystemAppearance();
+        ApplyWindowBackdrop();
     }
 
     private void ApplyWindowFrameAppearance()
@@ -110,12 +122,19 @@ public sealed partial class MainForm
         PaintContainers(form, palette, palette.Background);
         Control? output = form.Controls.Find("pOutput", true).FirstOrDefault();
         if (output != null) output.BackColor = palette.Canvas;
+        if (output is Panel panel) panel.BorderStyle = System.Windows.Forms.BorderStyle.None;
+        if (form.Controls.Find("pbOutput", true).FirstOrDefault() is PictureBox picture) picture.BackColor = palette.Canvas;
         foreach (string name in new[] { "btnCapture", "btnUpload", "btnCopy", "btnOptions", "btnHelp" })
             if (form.Controls.Find(name, true).FirstOrDefault() is Button button) palette.StyleButton(button, name == "btnCapture");
     }
 
     private void ApplyScrollingAppearance(ScrollingCaptureForm form)
     {
+        form.OptionsRequested = options =>
+        {
+            using ScrollingOptionsDialog dialog = new(options, appearancePalette, preferences.TransparencyEnabled);
+            dialog.ShowDialog(form);
+        };
         // Reparent the existing controls only. Their click handlers, scroll/pan behavior and lifetimes are unchanged.
         Control Find(string name) => form.Controls.Find(name, true).Single();
         Control output = Find("pOutput");
@@ -155,9 +174,9 @@ public sealed partial class MainForm
             button.Dock = DockStyle.None;
             button.Anchor = AnchorStyles.Top | AnchorStyles.Left;
             button.AutoSize = true;
-            button.MinimumSize = new Size(D(button.Name == "btnHelp" ? 40 : 112), D(38));
+            button.MinimumSize = new Size(D(button.Name == "btnHelp" ? 72 : 128), D(ButtonSpacing.ActionHeight));
             button.Size = button.MinimumSize;
-            button.Padding = new Padding(D(10), D(4), D(10), D(4));
+            button.Padding = new Padding(D(ButtonSpacing.Horizontal), D(ButtonSpacing.Vertical), D(ButtonSpacing.Horizontal), D(ButtonSpacing.Vertical));
             button.Margin = new Padding(0, 0, D(10), D(4));
             toolbar.Controls.Add(button);
         }

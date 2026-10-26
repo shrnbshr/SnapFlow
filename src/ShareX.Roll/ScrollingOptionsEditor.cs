@@ -28,7 +28,7 @@ internal sealed class ScrollingOptionsEditor : TableLayoutPanel
         AutoSize = true;
         ColumnCount = 1;
         ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        Padding = new Padding(0, 8, 0, 12);
+        Padding = new Padding(0, 0, 0, SettingsLayout.Vertical);
         Margin = Padding.Empty;
         method.Items.AddRange(Helpers.GetLocalizedEnumDescriptions<ScrollMethod>());
         AddRow("lblStartDelay", WithUnit(startDelay, "ms"));
@@ -55,7 +55,7 @@ internal sealed class ScrollingOptionsEditor : TableLayoutPanel
 
     private Control AddRow(string resourceName, Control input, string? text = null)
     {
-        TableLayoutPanel row = new() { Dock = DockStyle.Top, AutoSize = true, MinimumSize = new Size(0, 46), ColumnCount = 2, RowCount = 1, Margin = Padding.Empty, Padding = new Padding(2, 6, 2, 6) };
+        TableLayoutPanel row = new() { Dock = DockStyle.Top, AutoSize = true, MinimumSize = new Size(0, 56), ColumnCount = 2, RowCount = 1, Margin = Padding.Empty, Padding = new Padding(0, ButtonSpacing.Vertical, 0, ButtonSpacing.Vertical) };
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         row.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -81,7 +81,7 @@ internal sealed class ScrollingOptionsEditor : TableLayoutPanel
 
     private static Control WithUnit(NumericUpDown number, string unit)
     {
-        TableLayoutPanel group = new() { Width = 184, Height = 34, ColumnCount = 2, RowCount = 1, Anchor = AnchorStyles.Right, Margin = Padding.Empty };
+        TableLayoutPanel group = new() { Width = 184, Height = ButtonSpacing.FieldHeight, ColumnCount = 2, RowCount = 1, Anchor = AnchorStyles.Right, Margin = Padding.Empty };
         group.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120));
         group.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         group.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -126,7 +126,8 @@ internal sealed class SettingsDisclosure : Button
         get => expanded;
         set { expanded = value; rotation.SpringTo(value ? 1 : 0, 180); }
     }
-    private bool hovering;
+    private readonly UiTween hover;
+    private readonly ButtonElevation elevation = new();
 
     internal SettingsDisclosure()
     {
@@ -134,32 +135,34 @@ internal sealed class SettingsDisclosure : Button
         FlatStyle = FlatStyle.Flat;
         Cursor = Cursors.Hand;
         rotation = new(this, Invalidate);
+        hover = new(this, Invalidate);
+        Disposed += (_, _) => elevation.Dispose();
     }
 
-    protected override void OnMouseEnter(EventArgs e) { base.OnMouseEnter(e); hovering = true; Invalidate(); }
-    protected override void OnMouseLeave(EventArgs e) { base.OnMouseLeave(e); hovering = false; Invalidate(); }
+    protected override void OnMouseEnter(EventArgs e) { base.OnMouseEnter(e); hover.SpringTo(1, ButtonElevation.ResponseMilliseconds); }
+    protected override void OnMouseLeave(EventArgs e) { base.OnMouseLeave(e); hover.SpringTo(0, ButtonElevation.ResponseMilliseconds); }
     protected override void OnGotFocus(EventArgs e) { base.OnGotFocus(e); Invalidate(); }
     protected override void OnLostFocus(EventArgs e) { base.OnLostFocus(e); Invalidate(); }
     protected override void OnPaint(PaintEventArgs e)
     {
         Graphics g = e.Graphics;
         float s = DeviceDpi / 96f;
-        g.Clear(Parent?.BackColor ?? Palette.Surface);
+        if (Parent is SettingsGroup group) group.PaintChildBackground(this, g);
+        else g.Clear(Parent?.BackColor ?? Palette.Surface);
         g.SmoothingMode = SmoothingMode.AntiAlias;
-        using GraphicsPath shape = CaptureDrawing.Rounded(new RectangleF(0, 0, Width - 1, Height - 1), 10 * s);
-        if (hovering)
-        {
-            using SolidBrush fill = new(Palette.Hover);
-            g.FillPath(fill, shape);
-        }
-        if (Focused && ShowFocusCues)
+        RectangleF face = ButtonElevation.CompactFaceBounds(ClientSize, s);
+        elevation.PaintShadow(g, ClientSize, s, Palette.Background.GetBrightness() < .5f, Enabled ? hover.Value : 0, compact: true, unified: true);
+        using GraphicsPath shape = CaptureDrawing.Rounded(face, ButtonElevation.CompactRadius(face, s));
+        using SolidBrush fill = new(CaptureDrawing.Blend(Parent?.BackColor ?? Palette.Surface, ButtonElevation.Surface(Palette), hover.Value));
+        g.FillPath(fill, shape);
+        if (Focused && ShowFocusCues || SystemInformation.HighContrast)
         {
             using Pen edge = new(Palette.Accent, 1.5f * s);
             g.DrawPath(edge, shape);
         }
-        TextRenderer.DrawText(g, Text, Font, new Rectangle((int)(2 * s), 0, Math.Max(0, Width - (int)(32 * s)), Height), Palette.Text,
+        TextRenderer.DrawText(g, Text, Font, new Rectangle((int)(SettingsLayout.Inset * s), 0, Math.Max(0, Width - (int)(2 * SettingsLayout.Inset * s)), Height), Palette.Text,
             TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | UiLanguage.TextDirection);
-        float x = Width - 14 * s, y = Height / 2f;
+        float x = Width - (SettingsLayout.Inset + 4) * s, y = Height / 2f;
         using Pen chevron = new(Palette.Secondary, 1.7f * s) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
         g.TranslateTransform(x, y);
         g.RotateTransform(-180 * rotation.Value);

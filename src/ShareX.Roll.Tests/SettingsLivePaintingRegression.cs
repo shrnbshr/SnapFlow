@@ -56,10 +56,12 @@ internal static class SettingsLivePaintingRegression
         {
             main.TopMost = true;
             main.ForceActivate();
+            foreach (bool glass in new[] { true, false })
             foreach (AppearanceMode mode in new[] { AppearanceMode.Dark, AppearanceMode.Light })
             {
                 ApplicationPreferences preferences = original.Clone();
                 preferences.Appearance = mode;
+                preferences.TransparencyEnabled = glass;
                 preferences.AnimationsEnabled = true;
                 Set(main, "preferences", preferences);
                 Call(main, "ApplyAppearance");

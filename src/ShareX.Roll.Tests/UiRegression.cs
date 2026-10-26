@@ -68,7 +68,7 @@ internal static class UiRegression
                 Check(motionRow.RectangleToScreen(motionRow.ClientRectangle).Contains(toggle.RectangleToScreen(toggle.ClientRectangle)),
                     "motion switch stays fully inside its rounded settings row");
                 Render(main, "settings-final-" + mode);
-                Find<Button>(main, "backToCaptureButton").PerformClick();
+                Find<Button>(main, "cancelSettingsButton").PerformClick();
                 await Task.Delay(280);
             }
 
@@ -119,7 +119,7 @@ internal static class UiRegression
             Check(Application.OpenForms.Count == windows, "animated navigation creates no popup windows");
             Find<CheckBox>(main, "animationsToggle").Checked = false;
             Check(!UiMotion.UserEnabled && !UiMotion.Enabled, "animation toggle previews reduced motion immediately");
-            Find<Button>(main, "backToCaptureButton").PerformClick();
+            Find<Button>(main, "cancelSettingsButton").PerformClick();
             Check(UiMotion.UserEnabled, "cancel restores the original enabled animation preference");
             Check(Field<PageTransition?>(main, "pageTransition") == null, "return while motion is off is immediate");
 
@@ -133,7 +133,7 @@ internal static class UiRegression
             Find<Button>(main, "settingsButton").PerformClick();
             Check(Field<PageTransition?>(main, "pageTransition") == null, "disabled motion navigates without an overlay");
             Check(!Find<CheckBox>(main, "animationsToggle").Checked, "settings reflects the disabled animation preference");
-            Find<Button>(main, "backToCaptureButton").PerformClick();
+            Find<Button>(main, "cancelSettingsButton").PerformClick();
 
             string path = Path.Combine(Output, "motion-preferences.json");
             disabled.Save(path);
@@ -154,7 +154,7 @@ internal static class UiRegression
             if (main.DeviceDpi > 96)
             {
                 Call(main, "OpenSettings");
-                Button back = Find<Button>(main, "backToCaptureButton");
+                Button back = Find<Button>(main, "cancelSettingsButton");
                 Point point = back.PointToScreen(new Point(back.Width / 2, back.Height / 2));
                 Check(InputHelpers.SendMouseClick(point), "physical pointer click sent while navigation is animating");
                 await Task.Delay(90);

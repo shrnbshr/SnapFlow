@@ -51,7 +51,7 @@ Name: "chinesetrad"; MessagesFile: "Languages\ChineseTraditional.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
 ; Defensive exclusions in addition to build-installer.ps1's clean-directory check.

@@ -1,6 +1,7 @@
 // GPL-3.0-or-later. Reuse the bundled ShareX editor, crop/history engine and image encoders.
 using ShareX.HelpersLib;
 using ShareX.ScreenCaptureLib;
+using Microsoft.Win32;
 using static ShareX.Roll.Localization.UiText;
 
 namespace ShareX.Roll;
@@ -33,6 +34,14 @@ internal static class ScreenshotEditor
         catch { canvas.Dispose(); throw; }
         editor.Name = "screenshotEditor";
         editor.Font = new Font("Microsoft YaHei UI", 10);
+        WindowBackdrop backdrop = new(editor, () =>
+        {
+            Rectangle imageBounds = Rectangle.Ceiling(editor.EditorImageBounds);
+            // Crop handles and the image edge remain opaque along with the image itself.
+            imageBounds.Inflate((int)Math.Ceiling(8 * editor.DeviceDpi / 96f), (int)Math.Ceiling(8 * editor.DeviceDpi / 96f));
+            return imageBounds;
+        });
+        bool transparency = preferences?.TransparencyEnabled ?? true;
         float scale = editor.DeviceDpi / 96f;
         Rectangle workingArea = Screen.FromPoint(Cursor.Position).WorkingArea;
         editor.Size = new Size(Math.Min(workingArea.Width, (int)(1000 * scale)), Math.Min(workingArea.Height, (int)(720 * scale)));
@@ -81,9 +90,22 @@ internal static class ScreenshotEditor
             toolbar.Items.Insert(toolbar.Items.IndexOf(toolbar.Items["editorCopy"]!) + 1, crop);
             crop.Name = "editorCrop";
             LabelAction(crop, L("CropImage"));
-            EditorChrome.Install(editor, toolbar, palette);
+            EditorChrome.Install(editor, toolbar, palette, transparency);
         };
-        editor.HandleCreated += (_, _) => NativeMethods.UseImmersiveDarkMode(editor.Handle, palette.Background.GetBrightness() < .5);
+        editor.HandleCreated += (_, _) =>
+        {
+            NativeMethods.UseImmersiveDarkMode(editor.Handle, palette.Background.GetBrightness() < .5);
+            backdrop.Apply(palette, transparency);
+        };
+        editor.Shown += (_, _) => backdrop.Apply(palette, transparency);
+        void RefreshMaterial(object sender, UserPreferenceChangedEventArgs e)
+        {
+            if (editor.IsDisposed || editor.Disposing || !editor.IsHandleCreated) return;
+            try { editor.BeginInvoke((Action)(() => { if (!editor.IsDisposed) backdrop.Apply(palette, transparency); })); }
+            catch (InvalidOperationException) { /* The editor closed while the system event was queued. */ }
+        }
+        SystemEvents.UserPreferenceChanged += RefreshMaterial;
+        editor.Disposed += (_, _) => SystemEvents.UserPreferenceChanged -= RefreshMaterial;
         return editor;
     }
 

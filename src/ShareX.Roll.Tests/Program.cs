@@ -15,6 +15,11 @@ internal static class Program
     private static int Main(string[] args)
     {
         if (args.Contains("--save-location-child")) return SaveLocationRegression.ReadAfterRestart(args[^1]);
+        if (args.Contains("--button-rendering"))
+        {
+            try { ButtonHoverRegression.VerifyRendering(); return 0; }
+            catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }
+        }
         if (args.Contains("--stitch-regression"))
         {
             try { StitchingRegression.Run(); return 0; }
@@ -25,28 +30,71 @@ internal static class Program
         Application.EnableVisualStyles();
         Application.SetUnhandledExceptionMode(UnhandledExceptionMode.ThrowException);
         Application.SetCompatibleTextRenderingDefault(false);
+        if (args.Contains("--button-refinement"))
+        {
+            try { ButtonRefinementRegression.Run(); return 0; }
+            catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }
+        }
+        if (args.Contains("--button-elevation"))
+        {
+            try { ButtonElevationRegression.Run(args.Contains("--baseline"), args.Contains("--preview")); return 0; }
+            catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }
+        }
+        if (args.Contains("--shortcut-presentation"))
+        {
+            try { ShortcutPresentationRegression.Run(args.Contains("--baseline")); return 0; }
+            catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }
+        }
+        Stopwatch startup = Stopwatch.StartNew();
         using MainForm main = new();
         main.Shown += async (_, _) =>
         {
+            SettingsOpenLatencyRegression.StartupMilliseconds = startup.Elapsed.TotalMilliseconds;
             try
             {
-                if (args.Contains("--save-folder-presentation")) await SaveFolderPresentationRegression.RunAsync(main, args.Contains("--baseline"));
+                if (args.Contains("--button-hover")) await ButtonHoverRegression.RunAsync(main, args.Contains("--baseline"), args.Contains("--all-button-types"));
+                else if (args.Contains("--transparency-startup")) TransparencySettingsRegression.VerifyStartup(main, !args.Contains("--expected-off"));
+                else if (args.Contains("--theme-transition")) await ThemeTransitionRegression.RunAsync(main);
+                else if (args.Contains("--transparency-flicker")) await TransparencyFlickerRegression.RunAsync(main, args.Contains("--baseline"));
+                else if (args.Contains("--transparency-settings")) await TransparencySettingsRegression.RunAsync(main);
+                else if (args.Contains("--backdrop-transition")) await BackdropTransitionRegression.RunAsync(main, args.Contains("--baseline"));
+                else if (args.Contains("--acrylic-backdrop")) await AcrylicBackdropRegression.RunAsync(main);
+                else if (args.Contains("--layout-consistency")) await LayoutConsistencyRegression.RunAsync(main);
+                else if (args.Contains("--settings-bar-glass")) await SettingsBarGlassRegression.RunAsync(main);
+                else if (args.Contains("--settings-viewport")) await SettingsViewportRegression.RunAsync(main, args.Contains("--baseline"));
+                else if (args.Contains("--settings-restore")) await SettingsRestoreRegression.RunAsync(main, args.Contains("--baseline"));
+                else if (args.Contains("--save-folder-presentation")) await SaveFolderPresentationRegression.RunAsync(main, args.Contains("--baseline"));
                 else if (args.Contains("--save-location-visual")) await SaveLocationRegression.RunVisualAsync(main, args.Contains("--baseline"));
                 else if (args.Contains("--save-location")) await SaveLocationRegression.RunAsync(main);
+                else if (args.Contains("--settings-response-latency")) await SettingsOpenLatencyRegression.RunAsync(main, args.Contains("--baseline"), "artifacts/settings-response/entry");
+                else if (args.Contains("--settings-reuse")) await SettingsPageReuseRegression.RunAsync(main);
+                else if (args.Contains("--settings-open-latency")) await SettingsOpenLatencyRegression.RunAsync(main, args.Contains("--baseline"));
+                else if (args.Contains("--settings-motion-performance")) await SettingsMotionPerformanceRegression.RunAsync(main, args.Contains("--baseline"));
+                else if (args.Contains("--settings-scroll-presentation")) await SettingsScrollPresentationRegression.RunAsync(main, args.Contains("--baseline"), args.Contains("--maximized"));
                 else if (args.Contains("--settings-scroll-motion")) await SettingsScrollMotionRegression.RunAsync(main, args.Contains("--baseline"), args.Contains("--record-scroll"));
                 else if (args.Contains("--preview-zoom")) await PreviewZoomRegression.RunAsync(main);
                 else if (args.Contains("--settings-live-painting")) await SettingsLivePaintingRegression.RunAsync(main);
+                else if (args.Contains("--settings-menus")) await SettingsMenuRegression.RunAsync(main);
+                else if (args.Contains("--settings-polish-layout")) await SettingsPolishRegression.RunAsync(main, enforceFrameBudget: false);
                 else if (args.Contains("--settings-polish")) await SettingsPolishRegression.RunAsync(main);
                 else if (args.Contains("--inline-scrolling")) await InlineScrollingRegression.RunAsync(main);
                 else if (args.Contains("--settings-scrollbar")) await SettingsScrollbarRegression.RunAsync(main);
                 else if (args.Contains("--annotation-physical")) await AnnotationRegression.RunPhysicalAsync(main);
                 else if (args.Contains("--annotation")) await AnnotationRegression.RunAsync(main);
                 else if (args.Contains("--crop-viewport")) await BoundaryCropRegression.RunViewportAsync(main);
+                else if (args.Contains("--preview-actions")) await PreviewActionLayoutRegression.RunAsync(main);
+                else if (args.Contains("--editor-options")) await EditorOptionsRegression.RunAsync(main);
+                else if (args.Contains("--editor-effects")) await EditorEffectsRegression.RunAsync(main);
+                else if (args.Contains("--editor-backdrop")) await EditorBackdropRegression.RunAsync(main);
                 else if (args.Contains("--editor-chrome")) await EditorChromeRegression.RunAsync(main);
                 else if (args.Contains("--edge-crop")) await BoundaryCropRegression.RunAsync(main, args.Contains("--simulate-input"));
                 else if (args.Contains("--editor")) await EditorRegression.RunAsync(main);
                 else if (args.Contains("--merged-capture")) await WorkspacePreviewRegression.RunMergedAsync(main);
                 else if (args.Contains("--workspace-preview")) await WorkspacePreviewRegression.RunAsync(main);
+                else if (args.Contains("--motion-continuity")) await MotionContinuityRegression.RunAsync(main);
+                else if (args.Contains("--settings-motion-continuity")) await SettingsMotionContinuityRegression.RunAsync(main);
+                else if (args.Contains("--preview-motion-continuity")) await PreviewMotionContinuityRegression.RunAsync(main);
+                else if (args.Contains("--animation-cadence")) await AnimationCadenceRegression.RunAsync(main);
                 else if (args.Contains("--animation-performance")) await AnimationPerformanceRegression.RunAsync(main);
                 else if (args.Contains("--motion")) await MotionRegression.RunAsync(main);
                 else if (args.Contains("--language")) await LanguageRegression.RunAsync(main);

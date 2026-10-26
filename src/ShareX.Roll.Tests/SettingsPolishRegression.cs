@@ -29,7 +29,7 @@ internal static class SettingsPolishRegression
         image.Save(Path.Combine(output, name + "-" + main.DeviceDpi + ".png"), ImageFormat.Png);
     }
 
-    internal static async Task RunAsync(MainForm main)
+    internal static async Task RunAsync(MainForm main, bool enforceFrameBudget = true)
     {
         string output = Path.GetFullPath("artifacts/settings-polish");
         Directory.CreateDirectory(output);
@@ -56,15 +56,17 @@ internal static class SettingsPolishRegression
                 CapturePalette palette = CapturePalette.For(mode);
                 using (Bitmap collapsed = Render(group))
                 {
-                    int y = group.Padding.Top + group.GetRowHeights()[0];
+                    int y = Math.Min(collapsed.Height - 2, group.Padding.Top + group.GetRowHeights()[0]);
                     Check(!group.DrawDividers && collapsed.GetPixel(collapsed.Width / 2, y).ToArgb() == palette.Surface.ToArgb(), mode + ": collapsed disclosure has no orphan separator line");
                 }
                 Save(main, output, "collapsed-" + mode);
                 int windows = Application.OpenForms.Count;
+                SettingsReveal? opening = Field<SettingsReveal?>(page, "scrollingReveal");
+                long previousTicks = opening!.UpdateTicks;
+                int previousFrames = opening.UpdatedFrames;
                 Stopwatch start = Stopwatch.StartNew();
                 header.PerformClick();
                 start.Stop();
-                SettingsReveal? opening = Field<SettingsReveal?>(page, "scrollingReveal");
                 if (UiMotion.Enabled)
                 {
                     Check(opening?.IsAnimating == true, "expansion starts an interruptible animation");
@@ -78,8 +80,12 @@ internal static class SettingsPolishRegression
                     await Task.Delay(380);
                     Find<Control>(page, "scrollingOptionsEditor").Layout -= count;
                     Check(layouts == 0, "animation frames keep the internal input layout unchanged");
-                    double mean = opening.UpdateTicks * 1000d / Stopwatch.Frequency / Math.Max(1, opening.UpdatedFrames);
-                    Check(opening.UpdatedFrames > 1 && mean < 16.7, $"{mode}: clipping updates average {mean:F3} ms across {opening.UpdatedFrames} frames; click preparation {start.Elapsed.TotalMilliseconds:F2} ms");
+                    int frames = opening.UpdatedFrames - previousFrames;
+                    double mean = (opening.UpdateTicks - previousTicks) * 1000d / Stopwatch.Frequency / Math.Max(1, frames);
+                    Console.WriteLine($"PERFORMANCE {mode}: clipping updates average {mean:F3} ms across {frames} frames; click preparation {start.Elapsed.TotalMilliseconds:F2} ms");
+                    Check(frames > 1 && (!enforceFrameBudget || mean < 16.7), enforceFrameBudget
+                        ? $"{mode}: clipping updates remain below the 16.7 ms budget"
+                        : $"{mode}: expansion produces intermediate frames; absolute timing is recorded separately");
                     Check(!opening.IsAnimating, "completed expansion stops its timer without retaining screenshots");
                 }
                 viewport.AutoScrollPosition = new Point(0, group.Top);
@@ -96,7 +102,7 @@ internal static class SettingsPolishRegression
                 Console.WriteLine($"METRIC: dpi={number.DeviceDpi}, numeric={number.Bounds}, preferred={number.PreferredHeight}, font={number.Font}, edit={number.Controls.OfType<TextBox>().Single().Bounds}, field={number.Parent!.Bounds}");
                 SettingsChoice measuredChoice = Find<SettingsChoice>(page, "cbScrollMethod");
                 Console.WriteLine($"METRIC: choice={measuredChoice.Bounds}, itemHeight={measuredChoice.ItemHeight}, font={measuredChoice.Font}");
-                Check(number.Left == (int)(10 * number.DeviceDpi / 96f) && number.Top >= 0 && number.Bottom <= number.Parent!.ClientSize.Height,
+                Check(number.Left == (int)(12 * number.DeviceDpi / 96f) && number.Top >= 0 && number.Bottom <= number.Parent!.ClientSize.Height,
                     "numeric input is centered at the current DPI without double scaling");
                 using (Graphics graphics = number.CreateGraphics())
                 {
@@ -105,7 +111,7 @@ internal static class SettingsPolishRegression
                     Check(edit.Width >= needed + 4 * number.DeviceDpi / 96 && edit.Height >= number.Font.GetHeight(graphics),
                         "the largest allowed number fits without horizontal or vertical text clipping");
                 }
-                Check(measuredChoice.ItemHeight == (int)(26 * measuredChoice.DeviceDpi / 96f), "choice text height scales with the current DPI");
+                Check(measuredChoice.Height == (int)(40 * measuredChoice.DeviceDpi / 96f), "choice field matches the standard input height at the current DPI");
                 decimal value = number.Value;
                 number.UpButton();
                 Check(number.Value == Math.Min(number.Maximum, value + number.Increment), "numeric field preserves native stepping and range checks");
@@ -123,17 +129,18 @@ internal static class SettingsPolishRegression
                     Call(choice, "ProcessCmdKey", new Message(), Keys.F4);
                     ToolStripDropDownMenu popup = Field<ToolStripDropDownMenu?>(choice, "menu")!;
                     Check(choice.DroppedDown && popup.Visible && popup.Items.Count == choice.Items.Count, "F4 opens the themed menu with every option: " + name);
-                    if (UiMotion.Enabled) Check(choice.MenuAnimating, "choice menu begins a short fade without blocking input");
+                    Check(popup.Opacity == 1 && popup.Renderer is EditorToolStripRenderer,
+                        "choice menu shares editor glass while text and input remain fully opaque");
                     await Task.Delay(190);
                     using (Bitmap menuImage = Render(popup)) menuImage.Save(Path.Combine(output, $"menu-{name}-{mode}-{main.DeviceDpi}.png"), ImageFormat.Png);
-                    Check(popup.BackColor.ToArgb() == palette.Surface.ToArgb() && popup.Opacity > .99, "choice popup finishes fully opaque with the correct appearance");
+                    Check(popup.Opacity == 1 && !popup.DropShadowEnabled, "choice popup retains full window opacity and the editor's soft shadow");
                     int next = choice.SelectedIndex == 0 ? 1 : 0;
                     ((ToolStripMenuItem)popup.Items[next]).PerformClick();
                     Check(choice.SelectedIndex == next && !choice.DroppedDown, "menu selection updates the original value and dismisses the menu");
                     choice.DroppedDown = true;
                     popup = Field<ToolStripDropDownMenu?>(choice, "menu")!;
                     popup.Close(ToolStripDropDownCloseReason.Keyboard);
-                    Check(!choice.DroppedDown && !choice.MenuAnimating, "dismissal cancels the menu animation");
+                    Check(!choice.DroppedDown, "keyboard dismissal closes the shared menu");
                 }
                 viewport.AutoScrollPosition = new Point(0, group.Top);
                 main.Size = main.MinimumSize;

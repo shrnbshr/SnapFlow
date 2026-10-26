@@ -59,8 +59,9 @@ internal static class LanguageRegression
             {
                 ApplicationPreferences legacy = original.Clone();
                 legacy.Language = (LanguageMode)retired;
-                legacy.Save(path);
-                ApplicationPreferences migrated = ApplicationPreferences.Load(path);
+                string migrationPath = Path.Combine(output, $"migration-{retired}-{Guid.NewGuid():N}.json");
+                legacy.Save(migrationPath);
+                ApplicationPreferences migrated = ApplicationPreferences.Load(migrationPath);
                 Check(migrated.Language == LanguageMode.System && migrated.Appearance == legacy.Appearance &&
                     migrated.AnimationsEnabled == legacy.AnimationsEnabled && legacy.Shortcuts.All(pair => migrated.Shortcuts[pair.Key] == pair.Value),
                     "retired language migrates without losing preferences: " + retired);
@@ -116,7 +117,7 @@ internal static class LanguageRegression
                 Control origin = Find<Control>(page, "aboutOrigin");
                 Check(origin.Height >= origin.GetPreferredSize(new Size(origin.Width, 0)).Height,
                     "origin description is fully laid out: " + mode);
-                foreach (string buttonName in new[] { "saveSettingsButton", "cancelSettingsButton", "resetSettingsButton", "backToCaptureButton" })
+                foreach (string buttonName in new[] { "saveSettingsButton", "cancelSettingsButton", "resetSettingsButton" })
                 {
                     Button button = Find<Button>(page, buttonName);
                     Check(button.Width >= TextRenderer.MeasureText(button.Text, button.Font, Size.Empty, TextFormatFlags.SingleLine).Width,
@@ -140,7 +141,7 @@ internal static class LanguageRegression
                 }
                 main.Size = normalSize;
                 Find<ComboBox>(main, "languageSelector").SelectedIndex = (int)LanguageMode.System;
-                Find<Button>(main, "backToCaptureButton").PerformClick();
+                Find<Button>(main, "cancelSettingsButton").PerformClick();
                 Check(ApplicationPreferences.Load(path).Language == mode && UiLanguage.Culture.Name == UiLanguage.Resolve(mode, CultureInfo.GetCultureInfo("en-US")).Name,
                     "cancel discards the language draft: " + mode);
                 using Bitmap source = new(300, 200);
@@ -189,7 +190,7 @@ internal static class LanguageRegression
             Find<Button>(main, "settingsButton").PerformClick();
             Check(Find<Button>(main, "saveSettingsButton").RectangleToScreen(Find<Button>(main, "saveSettingsButton").ClientRectangle).Bottom <= main.RectangleToScreen(main.ClientRectangle).Bottom,
                 "save stays reachable when language row requires scrolling at minimum size");
-            Find<Button>(main, "backToCaptureButton").PerformClick();
+            Find<Button>(main, "cancelSettingsButton").PerformClick();
         }
         finally
         {

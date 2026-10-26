@@ -62,7 +62,7 @@ internal static class WorkspacePreviewRegression
         main.Controls.Find("settingsButton", true).OfType<Button>().Single().PerformClick();
         Check(!main.Controls.Find("windowShortcut", true).Any() && main.Controls.Find("regionShortcut", true).Length == 1,
             "settings has a single shortcut for region and window selection");
-        main.Controls.Find("backToCaptureButton", true).OfType<Button>().Single().PerformClick();
+        main.Controls.Find("cancelSettingsButton", true).OfType<Button>().Single().PerformClick();
         await Task.Delay(250);
 
         string legacyPath = Path.Combine(output, "legacy-preferences.json");
@@ -200,7 +200,7 @@ internal static class WorkspacePreviewRegression
             target.Hide();
             main.Controls.Find("settingsButton", true).OfType<Button>().Single().PerformClick();
             await Task.Delay(250);
-            main.Controls.Find("backToCaptureButton", true).OfType<Button>().Single().PerformClick();
+            main.Controls.Find("cancelSettingsButton", true).OfType<Button>().Single().PerformClick();
             await Task.Delay(250);
             Check(ReferenceEquals(Field<Bitmap>(main, "result"), preview.Image), "settings round trip preserves the preview");
             await main.CaptureAsync("full");

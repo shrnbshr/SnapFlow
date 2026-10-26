@@ -142,8 +142,8 @@ internal static class SettingsRegression
                 Check(Find<RadioButton>(page, "theme" + mode).Checked && main.BackColor == CapturePalette.For(mode).Background,
                     "selected appearance previews across the main window");
                 ShortcutRecorder recorder = Find<ShortcutRecorder>(page, "regionShortcut");
-                Check(recorder.Height >= 28 * page.DeviceDpi / 96 && recorder.Height <= 40 * page.DeviceDpi / 96,
-                    "shortcut controls keep a compact readable height at current DPI");
+                Check(recorder.Height >= 52 * page.DeviceDpi / 96 && recorder.Height <= 56 * page.DeviceDpi / 96,
+                    "shortcut controls preserve compact vertical padding at current DPI");
                 Check(Find<Button>(page, "saveSettingsButton").RectangleToScreen(Find<Button>(page, "saveSettingsButton").ClientRectangle).Bottom
                     <= page.RectangleToScreen(page.ClientRectangle).Bottom,
                     "fixed save / cancel footer stays within the main window");
@@ -163,7 +163,7 @@ internal static class SettingsRegression
                     "clear icon retains its descriptive accessible name");
                 Find<Button>(page, "resetSettingsButton").PerformClick();
                 Check(recorder.Shortcut == (Keys.Control | Keys.Shift | Keys.A), "restore defaults updates recorder");
-                Find<Button>(page, "backToCaptureButton").PerformClick();
+                Find<Button>(page, "cancelSettingsButton").PerformClick();
                 Check(Field<SettingsPage?>(main, "settingsPage") == null && main.Handle == mainHandle,
                     "back returns without replacing the main window");
             }
@@ -209,7 +209,7 @@ internal static class SettingsRegression
                 main.DrawToBitmap(compact, new Rectangle(Point.Empty, main.Size));
                 compact.Save(Path.Combine(Output, "settings-minimum-" + main.DeviceDpi + ".png"), ImageFormat.Png);
             }
-            Find<Button>(compactPage, "backToCaptureButton").PerformClick();
+            Find<Button>(compactPage, "cancelSettingsButton").PerformClick();
             main.Size = defaultSize;
 
             candidate.Shortcuts["full"] = Keys.None;

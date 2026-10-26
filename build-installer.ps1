@@ -102,5 +102,6 @@ $taskManifest = @(Get-ChildItem -LiteralPath $taskPayload -File -Recurse | ForEa
     sourceArchive = (Get-FileHash -LiteralPath $taskSourceZip -Algorithm SHA256).Hash
     files = $taskManifest
 } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $taskDist "SnapFlow-$taskVersion-installer-manifest.json") -Encoding utf8
+Copy-Item -LiteralPath $taskInstaller -Destination (Join-Path $taskDist 'SnapFlow-setup-x64.exe') -Force
 Write-Output "完成：$taskInstaller"
 Write-Output "对应源码：$taskSourceZip"

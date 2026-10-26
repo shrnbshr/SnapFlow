@@ -15,7 +15,7 @@ internal sealed class SettingsFolderField : Control
     {
         this.text = text;
         Name = "defaultSaveFolderField";
-        Height = 38;
+        Height = ButtonSpacing.FieldHeight;
         TabStop = false;
         SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
         focus = new(this, Invalidate);
@@ -58,7 +58,7 @@ internal sealed class SettingsFolderField : Control
 
     // Empty native text fields otherwise leave Control's default 100px preferred height in the table.
     public override Size GetPreferredSize(Size proposedSize) => new(0,
-        Math.Max((int)(38 * DeviceDpi / 96f), text.PreferredHeight + (int)(12 * DeviceDpi / 96f)));
+        Math.Max((int)(ButtonSpacing.FieldHeight * DeviceDpi / 96f), text.PreferredHeight + (int)(2 * ButtonSpacing.Vertical * DeviceDpi / 96f)));
 
     protected override void OnLayout(LayoutEventArgs e)
     {
@@ -83,9 +83,9 @@ internal sealed class SettingsFolderField : Control
         using SolidBrush fill = new(palette.Canvas);
         using Pen edge = new(CaptureDrawing.Blend(palette.Border, palette.Accent, focus.Value), (ContainsFocus ? 1.5f : 1) * scale);
         graphics.FillPath(fill, shape);
-        graphics.DrawPath(edge, shape);
+        if (ContainsFocus || SystemInformation.HighContrast) graphics.DrawPath(edge, shape);
         // A small folder outline makes the location field recognizable beside numeric and language inputs.
-        float x = 12 * scale, y = (Height - 14 * scale) / 2;
+        float x = ButtonSpacing.Horizontal * scale, y = (Height - 14 * scale) / 2;
         using GraphicsPath icon = new();
         icon.AddLines([new PointF(x, y + 2 * scale), new(x + 5 * scale, y + 2 * scale),
             new(x + 7 * scale, y + 4 * scale), new(x + 16 * scale, y + 4 * scale),

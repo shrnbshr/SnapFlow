@@ -44,6 +44,7 @@ namespace ShareX.ScreenCaptureLib
         // The bitmap is borrowed from the manager. Hosts must clone it before closing this form.
         public event Action<Bitmap> CaptureCompleted;
         public event Action SelectionCancelled;
+        public Action<ScrollingCaptureOptions> OptionsRequested { get; set; }
 
         public ScrollingCaptureOptions Options { get; private set; }
         public bool NoScrollDetected => !manager.IsCapturing && manager.Result != null && !manager.HasContentChanged;
@@ -263,6 +264,11 @@ namespace ShareX.ScreenCaptureLib
 
         private void btnOptions_Click(object sender, EventArgs e)
         {
+            if (OptionsRequested != null)
+            {
+                OptionsRequested(Options);
+                return;
+            }
             using (ScrollingCaptureOptionsForm scrollingCaptureOptionsForm = new ScrollingCaptureOptionsForm(Options))
             {
                 scrollingCaptureOptionsForm.ShowDialog();

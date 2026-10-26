@@ -21,6 +21,7 @@ internal sealed class ApplicationPreferences
 
     public AppearanceMode Appearance { get; set; } = AppearanceMode.System;
     public bool AnimationsEnabled { get; set; } = true;
+    public bool TransparencyEnabled { get; set; } = true;
     public LanguageMode Language { get; set; } = LanguageMode.System;
     public bool UseDefaultSaveFolder { get; set; }
     public string DefaultSaveFolder { get; set; } = "";
@@ -30,7 +31,7 @@ internal sealed class ApplicationPreferences
 
     internal ApplicationPreferences Clone() => new()
     {
-        Appearance = Appearance, AnimationsEnabled = AnimationsEnabled, Language = Language,
+        Appearance = Appearance, AnimationsEnabled = AnimationsEnabled, TransparencyEnabled = TransparencyEnabled, Language = Language,
         UseDefaultSaveFolder = UseDefaultSaveFolder, DefaultSaveFolder = DefaultSaveFolder, Shortcuts = new(Shortcuts)
     };
 

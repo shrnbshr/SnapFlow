@@ -56,7 +56,7 @@ internal static class WindowFrameRegression
                 foreach (string kind in preferences.Shortcuts.Keys.ToArray()) preferences.Shortcuts[kind] = Keys.None;
                 Set(main, "preferences", preferences);
                 Call(main, "ApplyAppearance");
-                foreach (string buttonName in new[] { "backToCaptureButton", "saveSettingsButton" })
+                foreach (string buttonName in new[] { "cancelSettingsButton", "saveSettingsButton" })
                 {
                     Find<Button>(main, "settingsButton").PerformClick();
                     AppearanceMode displayedMode = mode;
@@ -136,7 +136,7 @@ internal static class WindowFrameRegression
                 Find<Button>(main, "settingsButton").PerformClick();
                 AppearanceMode savedMode = Field<ApplicationPreferences>(main, "preferences").Appearance;
                 Find<RadioButton>(main, "theme" + (savedMode == AppearanceMode.Dark ? AppearanceMode.Light : AppearanceMode.Dark)).Checked = true;
-                Find<Button>(main, "backToCaptureButton").PerformClick();
+                Find<Button>(main, "cancelSettingsButton").PerformClick();
                 Check(NativeMethods.DwmGetWindowAttribute(main.Handle, 20, out int restored, sizeof(int)) == 0 && (restored != 0) == (savedMode == AppearanceMode.Dark), "cancel restores the saved native frame theme after preview");
             }
             if (failures.Count != 0) throw new InvalidOperationException(string.Join("; ", failures));

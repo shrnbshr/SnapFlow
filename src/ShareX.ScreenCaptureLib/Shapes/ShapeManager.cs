@@ -1977,6 +1977,11 @@ namespace ShareX.ScreenCaptureLib
 
         public void CropArea(RectangleF rect)
         {
+            if (Options.UseEditorChrome)
+            {
+                Rectangle pixels = new RectangleF(rect.X - Form.CanvasRectangle.X, rect.Y - Form.CanvasRectangle.Y, rect.Width, rect.Height).Round();
+                rect = new RectangleF(Form.CanvasRectangle.X + pixels.X, Form.CanvasRectangle.Y + pixels.Y, pixels.Width, pixels.Height);
+            }
             Bitmap bmp = CropImage(rect, true);
 
             if (bmp != null)
@@ -1999,10 +2004,19 @@ namespace ShareX.ScreenCaptureLib
 
         public Bitmap CropImage(RectangleF rect, bool onlyIfSizeDifferent = false)
         {
-            rect = CaptureHelpers.ScreenToClient(rect.Round());
-            PointF offset = CaptureHelpers.ScreenToClient(Form.CanvasRectangle.Location.Round());
-            rect.X -= offset.X;
-            rect.Y -= offset.Y;
+            if (Options.UseEditorChrome)
+            {
+                // Round in image coordinates; rounding two fractional screen origins first can shift a crop by one pixel.
+                rect.X -= Form.CanvasRectangle.X;
+                rect.Y -= Form.CanvasRectangle.Y;
+            }
+            else
+            {
+                rect = CaptureHelpers.ScreenToClient(rect.Round());
+                PointF offset = CaptureHelpers.ScreenToClient(Form.CanvasRectangle.Location.Round());
+                rect.X -= offset.X;
+                rect.Y -= offset.Y;
+            }
             Rectangle cropRect = Rectangle.Intersect(new Rectangle(0, 0, Form.Canvas.Width, Form.Canvas.Height), rect.Round());
 
             if (cropRect.IsValid() && (!onlyIfSizeDifferent || cropRect.Size != Form.Canvas.Size))

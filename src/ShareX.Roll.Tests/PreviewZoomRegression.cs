@@ -132,6 +132,89 @@ internal static class PreviewZoomRegression
         finally { preview.Image = null; UiMotion.UserEnabled = originalMotion; }
     }
 
+    private static void VerifyTransparency(MainForm main, string output)
+    {
+        bool originalMotion = UiMotion.UserEnabled;
+        UiMotion.UserEnabled = false;
+        using Bitmap image = new(640, 360);
+        using PreviewCanvas preview = new() { Location = new Point(-10000, -10000), Size = new Size(640, 360), Image = image };
+        main.Controls.Add(preview);
+        try
+        {
+            preview.SynchronizeImage();
+            preview.SetZoomBarHovered(true);
+            PreviewZoomBar bar = (PreviewZoomBar)preview.Controls.Find("previewZoomBar", true).Single();
+            Control button = bar.Controls.Find("previewZoomIn", true).Single();
+            float scale = bar.DeviceDpi / 96f;
+            Point sample = new(button.Left + button.Width / 2, button.Top + (int)(3 * scale));
+            foreach (CapturePalette palette in new[] { CapturePalette.Light, CapturePalette.Dark })
+            {
+                preview.Palette = palette;
+                preview.ApplyViewportAppearance();
+                preview.ZoomTransparencyEnabled = true;
+                using Bitmap red = new(bar.Width, bar.Height), blue = new(bar.Width, bar.Height);
+                using (Graphics g = Graphics.FromImage(image)) g.Clear(Color.Red);
+                bar.DrawToBitmap(red, bar.ClientRectangle);
+                using (Graphics g = Graphics.FromImage(image)) g.Clear(Color.Blue);
+                preview.Invalidate();
+                bar.DrawToBitmap(blue, bar.ClientRectangle);
+                string theme = palette == CapturePalette.Light ? "Light" : "Dark";
+                Color a = red.GetPixel(sample.X, sample.Y), b = blue.GetPixel(sample.X, sample.Y);
+                Check(a.R > b.R + 25 && b.B > a.B + 25, theme + " preview pixels show through native zoom buttons");
+                using Bitmap material = new(bar.Width, bar.Height);
+                using (Graphics g = Graphics.FromImage(material)) bar.PaintSurface(g, Point.Empty);
+                Color surface = material.GetPixel(sample.X, sample.Y);
+                Check(Math.Abs(surface.R - b.R) <= 1 && Math.Abs(surface.B - b.B) <= 1,
+                    theme + " toolbar and button backgrounds form a continuous material");
+                preview.ZoomTransparencyEnabled = false;
+                using Bitmap opaque = new(bar.Width, bar.Height);
+                bar.DrawToBitmap(opaque, bar.ClientRectangle);
+                Check(opaque.GetPixel(sample.X, sample.Y).ToArgb() == palette.Surface.ToArgb(),
+                    theme + " transparency setting restores an opaque zoom toolbar");
+                preview.ZoomTransparencyEnabled = true;
+                using (Graphics g = Graphics.FromImage(image))
+                {
+                    g.Clear(Color.White);
+                    int stripe = Math.Max(1, (int)(2 * scale));
+                    for (int x = 0; x < image.Width; x += 2 * stripe)
+                        g.FillRectangle(Brushes.Black, x, 0, stripe, image.Height);
+                }
+                preview.Invalidate();
+                using Bitmap frosted = new(bar.Width, bar.Height);
+                bar.DrawToBitmap(frosted, bar.ClientRectangle);
+                int darkest = 255, brightest = 0;
+                for (int x = button.Left + (int)(8 * scale); x < button.Right - (int)(8 * scale); x++)
+                {
+                    int redChannel = frosted.GetPixel(x, sample.Y).R;
+                    darkest = Math.Min(darkest, redChannel); brightest = Math.Max(brightest, redChannel);
+                }
+                Check(brightest - darkest < 12, theme + " frosted background suppresses sharp image detail behind the controls");
+                {
+                    bool light = palette == CapturePalette.Light;
+                    using (Graphics g = Graphics.FromImage(image)) g.Clear(light ? Color.White : palette.Canvas);
+                    preview.Invalidate();
+                    using Bitmap solid = new(preview.Width, preview.Height);
+                    preview.DrawToBitmap(solid, preview.ClientRectangle);
+                    solid.Save(Path.Combine(output, $"{(light ? "white" : "dark")}-background-{main.DeviceDpi}.png"), ImageFormat.Png);
+                }
+                // Include patterned content in a complete preview for visual inspection.
+                using (Graphics g = Graphics.FromImage(image))
+                {
+                    g.Clear(palette.Canvas);
+                    for (int x = 0; x < image.Width; x += 40)
+                        g.FillRectangle(x % 80 == 0 ? Brushes.CornflowerBlue : Brushes.Coral, x, 0, 40, image.Height);
+                    using Font detail = new("Microsoft YaHei UI", 15 * scale);
+                    g.DrawString("背景文字 · Preview image detail", detail, Brushes.Black, 0, bar.Top + 12 * scale);
+                }
+                preview.Invalidate();
+                using Bitmap shot = new(preview.Width, preview.Height);
+                preview.DrawToBitmap(shot, preview.ClientRectangle);
+                shot.Save(Path.Combine(output, $"transparency-{theme}-{main.DeviceDpi}.png"), ImageFormat.Png);
+            }
+        }
+        finally { preview.Image = null; UiMotion.UserEnabled = originalMotion; }
+    }
+
     private static async Task VerifyZoomButtonAsync(Button button, string output, int dpi)
     {
         object table = typeof(CaptureButtonPainter).GetField("states", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!;
@@ -189,7 +272,43 @@ internal static class PreviewZoomRegression
             Call(main, "SetPreview", source);
             await Task.Delay(230);
             await VerifyHoverAsync(main, source, preview.Size, output);
+            VerifyTransparency(main, output);
             preview.SetZoomBarHovered(true);
+            await WaitForFadeAsync((PreviewZoomFade)preview.Controls.Find("previewZoomFade", true).Single());
+            UiMotion.UserEnabled = false;
+            preview.SetZoomBarHovered(true);
+            preview.FitImageWidth();
+            preview.Update();
+            Control liveBar = preview.Controls.Find("previewZoomBar", true).Single();
+            Control livePlus = liveBar.Controls.Find("previewZoomIn", true).Single();
+            int liveBackgroundPaints = 0;
+            PaintEventHandler trackBackground = (_, _) => liveBackgroundPaints++;
+            livePlus.Paint += trackBackground;
+            try
+            {
+                for (int frame = 0; frame < 8; frame++)
+                {
+                    int beforePaints = liveBackgroundPaints;
+                    preview.ScrollPreview(40);
+                    preview.Update();
+                    Check(liveBackgroundPaints > beforePaints, "native zoom background follows scroll frame " + frame + " without waiting for queued child paint");
+                }
+                Point grab = new(preview.Width / 3, preview.Height / 3);
+                Call(preview, "OnMouseDown", new MouseEventArgs(MouseButtons.Left, 1, grab.X, grab.Y, 0));
+                try
+                {
+                    for (int frame = 1; frame <= 8; frame++)
+                    {
+                        int beforePaints = liveBackgroundPaints;
+                        Call(preview, "OnMouseMove", new MouseEventArgs(MouseButtons.Left, 0, grab.X, grab.Y - frame * 12, 0));
+                        preview.Update();
+                        Check(liveBackgroundPaints > beforePaints, "native zoom background follows drag frame " + frame + " synchronously");
+                    }
+                }
+                finally { Call(preview, "OnMouseUp", new MouseEventArgs(MouseButtons.Left, 1, grab.X, grab.Y - 96, 0)); }
+            }
+            finally { livePlus.Paint -= trackBackground; }
+            preview.FitImage();
             double fit = Math.Min((double)preview.Width / source.Width, (double)preview.Height / source.Height);
             Check(Math.Abs(preview.ZoomFactor - fit) < .000001, "new capture starts fitted to the window");
             UiMotion.UserEnabled = false;

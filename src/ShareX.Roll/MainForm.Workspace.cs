@@ -22,7 +22,7 @@ public sealed partial class MainForm
             ColumnCount = 1, RowCount = 3, Margin = Padding.Empty
         };
         workspace.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        workspace.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));
+        workspace.RowStyles.Add(new RowStyle(SizeType.Absolute, 90));
         workspace.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         workspace.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         TableLayoutPanel heading = new() { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = new Padding(0, 0, 0, 18) };
@@ -30,12 +30,12 @@ public sealed partial class MainForm
         heading.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         heading.Controls.Add(new Label
         {
-            Name = "workspaceName", Text = "SnapFlow", AutoSize = true, Font = new Font("Georgia", 18, FontStyle.Bold),
-            Margin = new Padding(0, 1, 0, 0)
+            Name = "captureHeading", Text = L("NewCapture"), AutoSize = true, Font = new Font(Font.FontFamily, 18, FontStyle.Bold),
+            Margin = new Padding(0, 1, 0, 0), Anchor = AnchorStyles.Left
         }, 0, 0);
         settingsButton.AutoSize = false;
         settingsButton.MinimumSize = Size.Empty;
-        settingsButton.Size = new Size(104, 36);
+        settingsButton.Size = new Size(124, ButtonSpacing.ActionHeight);
         settingsButton.Text = L("Settings");
         settingsButton.Tag = "quiet";
         settingsButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
@@ -46,25 +46,20 @@ public sealed partial class MainForm
         workspace.Controls.Add(heading, 0, 0);
 
         TableLayoutPanel body = new() { Name = "captureBody", Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = Padding.Empty };
-        body.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 220));
+        body.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 272));
         body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        captureSidebar = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = ApplicationPreferences.Actions.Length + 3, Margin = new Padding(0, 0, 24, 0) };
+        captureSidebar = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = ApplicationPreferences.Actions.Length + 2, Margin = new Padding(0, 0, 24, 0) };
         captureSidebar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        captureSidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
-        captureSidebar.Controls.Add(new Label
-        {
-            Name = "captureHeading", Text = L("NewCapture"), AutoSize = true, Font = new Font(Font, FontStyle.Bold),
-            Margin = new Padding(4, 0, 0, 0), Anchor = AnchorStyles.Left
-        }, 0, 0);
-        int row = 1;
+        const int captureCardHeight = 88;
+        int row = 0;
         foreach (CaptureShortcut action in ApplicationPreferences.Actions)
         {
-            captureSidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, 72));
+            captureSidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, captureCardHeight));
             CaptureModeButton button = new()
             {
                 Name = action.Kind + "Button", Text = action.Title, Kind = action.Kind,
                 Shortcut = new HotkeyInfo(preferences.Shortcuts[action.Kind]).ToString(),
-                Dock = DockStyle.Fill, Margin = new Padding(0, 0, 0, 8), AccessibleName = action.Title, TabIndex = row - 1
+                Dock = DockStyle.Fill, Margin = Padding.Empty, AccessibleName = action.Title, TabIndex = row
             };
             button.Click += async (_, _) => await CaptureAsync(action.Kind);
             modeButtons.Add(action.ModeKey, button);
@@ -72,9 +67,35 @@ public sealed partial class MainForm
         }
         captureSidebar.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         captureSidebar.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        bool arrangingCaptureRows = false;
+        void ArrangeCaptureRows()
+        {
+            if (!captureSidebar.IsHandleCreated || arrangingCaptureRows) return;
+            arrangingCaptureRows = true;
+            captureSidebar.SuspendLayout();
+            try
+            {
+                float scale = captureSidebar.DeviceDpi / 96f;
+                int available = captureSidebar.ClientSize.Height;
+                int cardHeight = Math.Min((int)Math.Round(captureCardHeight * scale), Math.Max(1, available / ApplicationPreferences.Actions.Length));
+                for (int i = 0; i < ApplicationPreferences.Actions.Length; i++)
+                {
+                    CaptureModeButton button = modeButtons[ApplicationPreferences.Actions[i].ModeKey];
+                    captureSidebar.RowStyles[i].Height = cardHeight;
+                    button.Margin = Padding.Empty;
+                }
+            }
+            finally { captureSidebar.ResumeLayout(true); arrangingCaptureRows = false; }
+        }
         captureTip.Font = new Font(Font.FontFamily, 10);
         captureSidebar.Controls.Add(captureTip, 0, row + 1);
-        captureSidebar.SizeChanged += (_, _) => captureTip.Visible = captureSidebar.ClientSize.Height >= 430 * DeviceDpi / 96f;
+        captureSidebar.SizeChanged += (_, _) =>
+        {
+            captureTip.Visible = captureSidebar.ClientSize.Height >= 430 * DeviceDpi / 96f;
+            ArrangeCaptureRows();
+        };
+        captureSidebar.HandleCreated += (_, _) => ArrangeCaptureRows();
+        captureSidebar.DpiChangedAfterParent += (_, _) => ArrangeCaptureRows();
         body.Controls.Add(captureSidebar, 0, 0);
 
         previewFrame = new PreviewSurface
@@ -100,14 +121,14 @@ public sealed partial class MainForm
         previewHint.Margin = new Padding(0, 2, 0, 0);
         caption.Controls.AddRange([previewTitle, previewHint]);
         toolbar.Controls.Add(caption, 0, 0);
-        FlowLayoutPanel actions = new() { AutoSize = true, WrapContents = false, Anchor = AnchorStyles.Top | AnchorStyles.Right, Margin = Padding.Empty };
+        Panel actions = new() { Name = "previewActions", Anchor = AnchorStyles.Top | AnchorStyles.Right, Margin = Padding.Empty };
         foreach (Button button in new[] { edit, copy, save })
         {
             button.AutoSize = false;
             button.MinimumSize = Size.Empty;
-            button.Size = new Size(82, 34);
+            button.Size = new Size(112, ButtonSpacing.ActionHeight);
             button.Padding = Padding.Empty;
-            button.Margin = new Padding(6, 0, 0, 0);
+            button.Margin = new Padding(0, 0, button == save ? 0 : 12, 8);
             button.Font = new Font(Font.FontFamily, 10);
             button.Tag = "quiet";
             button.TabIndex = actions.Controls.Count;
@@ -119,7 +140,30 @@ public sealed partial class MainForm
         bool reflowPending = false;
         void ReflowToolbar()
         {
+            SizeWorkspaceActions();
             bool narrow = toolbar.ClientSize.Width < 560 * DeviceDpi / 96f;
+            int available = Math.Max(1, toolbar.ClientSize.Width - (narrow ? 0 : caption.GetPreferredSize(Size.Empty).Width + (int)(24 * DeviceDpi / 96f)));
+            int horizontalGap = (int)Math.Round(12 * DeviceDpi / 96f), verticalGap = (int)Math.Round(8 * DeviceDpi / 96f);
+            Button[] commands = [edit, copy, save];
+            int width = Math.Min(available, commands.Sum(button => button.Width) + horizontalGap * (commands.Length - 1));
+            List<List<Button>> rows = [new()];
+            int used = 0;
+            foreach (Button button in commands)
+            {
+                if (used > 0 && used + horizontalGap + button.Width > width) { rows.Add(new()); used = 0; }
+                rows[^1].Add(button);
+                used += button.Width + (used > 0 ? horizontalGap : 0);
+            }
+            int y = 0;
+            actions.SuspendLayout();
+            foreach (List<Button> line in rows)
+            {
+                int x = width - line.Sum(button => button.Width) - horizontalGap * (line.Count - 1);
+                foreach (Button button in line) { button.Location = new Point(x, y); x += button.Width + horizontalGap; }
+                y += line.Max(button => button.Height) + verticalGap;
+            }
+            actions.Size = new Size(width, y - verticalGap);
+            actions.ResumeLayout(true);
             if (toolbar.GetRow(actions) == (narrow ? 1 : 0) && toolbar.GetColumnSpan(caption) == (narrow ? 2 : 1)) return;
             toolbar.SuspendLayout();
             try
@@ -147,8 +191,14 @@ public sealed partial class MainForm
         }
         toolbar.HandleCreated += (_, _) => QueueToolbarLayout();
         toolbar.SizeChanged += (_, _) => QueueToolbarLayout();
+        toolbar.DpiChangedAfterParent += (_, _) => QueueToolbarLayout();
         previewHint.TextChanged += (_, _) => QueueToolbarLayout();
-        edit.TextChanged += (_, _) => QueueToolbarLayout();
+        foreach (Button button in new[] { settingsButton, edit, copy, save })
+        {
+            button.TextChanged += (_, _) => QueueToolbarLayout();
+            button.FontChanged += (_, _) => QueueToolbarLayout();
+            button.DpiChangedAfterParent += (_, _) => QueueToolbarLayout();
+        }
         previewFrame.Controls.Add(toolbar, 0, 0);
         preview.Margin = Padding.Empty;
         previewFrame.Controls.Add(preview, 0, 1);
@@ -200,8 +250,8 @@ public sealed partial class MainForm
     private void SizeWorkspaceActions()
     {
         foreach (Button button in new[] { settingsButton, edit, copy, save })
-            button.Width = Math.Max((int)((button == settingsButton ? 104 : 82) * DeviceDpi / 96f),
-                TextRenderer.MeasureText(button.Text, button.Font, Size.Empty, TextFormatFlags.NoPadding).Width + (int)(40 * DeviceDpi / 96f));
+            button.Width = Math.Max((int)((button == settingsButton ? 116 : 104) * button.DeviceDpi / 96f),
+                CaptureButtonPainter.PreferredActionWidth(button));
     }
 }
 

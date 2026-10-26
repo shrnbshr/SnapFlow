@@ -142,7 +142,7 @@ internal static class InlineScrollingRegression
                     viewport.AutoScrollPosition = new Point(0, row.Top);
                     Render(main, output, $"expanded-{language}-{mode}-{(minimum ? "minimum" : "normal")}");
                 }
-                Find<Button>(page, "backToCaptureButton").PerformClick();
+                Find<Button>(page, "cancelSettingsButton").PerformClick();
             }
             Check(Application.OpenForms.Count == windows, "inline scrolling settings never create another window");
         }
