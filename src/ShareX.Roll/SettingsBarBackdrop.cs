@@ -4,6 +4,7 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using System.Diagnostics;
+using System.Numerics;
 
 namespace ShareX.Roll;
 
@@ -15,6 +16,8 @@ internal interface IBackdropSnapshotOverlay
 internal sealed class SettingsBarBackdrop : IDisposable
 {
     private readonly Control bar, content;
+    private readonly SettingsScrollBackdropCache? scrollCache;
+    private readonly bool clearAtBottom;
     private readonly Dictionary<Control, Surface> surfaces = new();
     private readonly HashSet<Control> sources = new();
     private readonly Dictionary<Control, int> sourceVersions = new();
@@ -23,16 +26,23 @@ internal sealed class SettingsBarBackdrop : IDisposable
     private float sampleDpi;
     internal long CaptureTicks, FilterTicks, UpscaleTicks, AlphaTicks;
     internal int Builds, Reuses;
+    internal int SurfaceComposites, SurfaceReuses;
+    private int materialVersion;
+    private readonly MaterialBuffer opaqueBuffer = new(), glassBuffer = new();
     private readonly record struct SampleState(Control Control, Rectangle Clip, Point Origin, Size Size, int Version, int Background);
     private CapturePalette palette = CapturePalette.Light;
-    private Bitmap? capture, sample, material;
-    private int[] materialPixels = [], livePixels = [];
+    private Bitmap? capture, sample, material, clearEdge;
+    private int[] materialPixels = [], livePixels = [], clearPixels = [];
+    private int[] clearMattes = [], edgeMattes = [];
     private bool enabled, dirty = true, sampling, invalidating, disposed;
 
-    internal SettingsBarBackdrop(Control bar, Control content)
+    internal SettingsBarBackdrop(Control bar, Control content, SettingsScrollBackdropCache? scrollCache = null, bool clearAtBottom = false)
     {
         this.bar = bar;
         this.content = content;
+        this.scrollCache = scrollCache;
+        this.clearAtBottom = clearAtBottom;
+        if (scrollCache != null) scrollCache.Ready += CacheReady;
         ObserveBar(bar);
         ObserveSource(content.Parent ?? content);
     }
@@ -41,9 +51,16 @@ internal sealed class SettingsBarBackdrop : IDisposable
     {
         palette = value;
         enabled = active && !SystemInformation.HighContrast;
+        scrollCache?.Apply(value, enabled);
         sampleValid = false;
         dirty = false;
         Changed(null, EventArgs.Empty);
+    }
+
+    private void CacheReady(object? sender, EventArgs e)
+    {
+        sampleValid = false;
+        Changed(sender, e);
     }
 
     internal void ApplySnapshot(BackdropSnapshot snapshot, Control page)
@@ -126,7 +143,9 @@ internal sealed class SettingsBarBackdrop : IDisposable
         if (bar.IsHandleCreated && bar.Visible)
         {
             invalidating = true;
-            try { bar.Invalidate(true); }
+            // Check the source sample on the bar first. Unchanged material does not
+            // require repainting every foreground label and button in the fixed bar.
+            try { bar.Invalidate(); }
             finally { invalidating = false; }
         }
     }
@@ -144,12 +163,30 @@ internal sealed class SettingsBarBackdrop : IDisposable
             // Layout and offscreen invalidations need not regenerate an unchanged sample.
             // Compare exact visible source state; retain live revisions for animated/text controls.
             pending.Clear();
-            CollectSample(content, Point.Empty, new Rectangle(Point.Empty, content.ClientSize), area);
+            Rectangle observedArea = area;
+            // The shared scene also includes blur contributions beyond the local
+            // capture margin. Observe that complete support before reusing a crop.
+            if (scrollCache != null) observedArea.Inflate(padding, padding);
+            CollectSample(content, Point.Empty, new Rectangle(Point.Empty, content.ClientSize), observedArea);
             if (sampleValid && sampleDpi == dpi && material?.Size == bar.ClientSize && pending.SequenceEqual(sampled))
             {
                 Reuses++;
                 dirty = false;
                 return;
+            }
+            if (scrollCache != null)
+            {
+                Resize(ref material, bar.ClientSize);
+                long copied = Stopwatch.GetTimestamp();
+                bool cached;
+                using (Graphics graphics = Graphics.FromImage(material!)) cached = scrollCache.Draw(graphics, origin, bar.ClientSize);
+                if (cached)
+                {
+                    PrepareClearEdge(origin, dpi, cached: true);
+                    UpscaleTicks += Stopwatch.GetTimestamp() - copied;
+                    CommitMaterial(dpi);
+                    return;
+                }
             }
             Resize(ref capture, area.Size, PixelFormat.Format32bppRgb);
             long stage = Stopwatch.GetTimestamp();
@@ -184,27 +221,149 @@ internal sealed class SettingsBarBackdrop : IDisposable
                 graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
                 using ImageAttributes edges = new();
                 edges.SetWrapMode(WrapMode.TileFlipXY);
+                // The sampled backdrop is opaque. Copy it directly, then apply
+                // the original tint; source-over blending the enlarged image is redundant.
+                graphics.CompositingMode = CompositingMode.SourceCopy;
                 graphics.DrawImage(sample!, new Rectangle(-padding, -padding, area.Width, area.Height),
                     0, 0, sample!.Width, sample.Height, GraphicsUnit.Pixel, edges);
+                graphics.CompositingMode = CompositingMode.SourceOver;
                 using SolidBrush tint = new(Color.FromArgb(164, palette.Background));
                 graphics.FillRectangle(tint, bar.ClientRectangle);
             }
+            PrepareClearEdge(origin, dpi, cached: false);
             UpscaleTicks += Stopwatch.GetTimestamp() - stage; stage = Stopwatch.GetTimestamp();
-            materialPixels = ReadPixels(material!, materialPixels);
-            if (livePixels.Length != materialPixels.Length) livePixels = new int[materialPixels.Length];
-            uint matte = BackdropSnapshot.RemovedMatte(palette);
-            for (int i = 0; i < materialPixels.Length; i++)
-                livePixels[i] = (int)BackdropSnapshot.RemoveMatte((uint)materialPixels[i] | 0xFF000000, matte);
-            AlphaTicks += Stopwatch.GetTimestamp() - stage; Builds++;
-            (sampled, pending) = (pending, sampled);
-            sampleDpi = dpi;
-            sampleValid = true;
-            dirty = false;
+            CommitMaterial(dpi);
         }
         finally { sampling = false; }
     }
 
-    private static void PrintContent(Control control, Point origin, Rectangle parentClip, Rectangle area, nint dc)
+    private void PrepareClearEdge(Point origin, float dpi, bool cached)
+    {
+        // Feather only the inner edge. Keep the foreground controls over the
+        // original material, with no extra blur pass or per-frame scene capture.
+        int height = Math.Min(bar.Height, (int)Math.Ceiling(32 * dpi));
+        int top = clearAtBottom ? bar.Height - height : 0;
+        Resize(ref clearEdge, new Size(bar.Width, height));
+        if (clearMattes.Length != bar.Width * height) clearMattes = new int[bar.Width * height];
+        if (cached)
+        {
+            using Graphics graphics = Graphics.FromImage(clearEdge!);
+            Point source = new(origin.X, origin.Y + top);
+            scrollCache!.Draw(graphics, source, clearEdge!.Size, sharp: true);
+            scrollCache.CopySharpMatte(source, clearEdge.Size, clearMattes);
+        }
+        else
+        {
+            int padding = (int)Math.Ceiling(24 * dpi);
+            using (Graphics graphics = Graphics.FromImage(clearEdge!))
+            {
+                graphics.CompositingMode = CompositingMode.SourceCopy;
+                graphics.DrawImage(capture!, new Rectangle(Point.Empty, clearEdge!.Size),
+                    padding, padding + top, clearEdge.Width, height, GraphicsUnit.Pixel);
+            }
+            BackdropSnapshot coverage = BackdropSnapshot.Capture(content, clearEdge!, palette, new Point(-origin.X, -origin.Y - top));
+            MemoryMarshal.Cast<uint, int>(coverage.Pixels.AsSpan()).CopyTo(clearMattes);
+        }
+    }
+
+    private void CommitMaterial(float dpi)
+    {
+        long stage = Stopwatch.GetTimestamp();
+        materialPixels = ReadPixels(material!, materialPixels);
+        clearPixels = ReadPixels(clearEdge!, clearPixels);
+        BlendScrollEdge(materialPixels, clearPixels, bar.Width, bar.Height, clearAtBottom);
+        WritePixels(material!, materialPixels);
+        if (livePixels.Length != materialPixels.Length) livePixels = new int[materialPixels.Length];
+        uint matte = BackdropSnapshot.RemovedMatte(palette);
+        RemoveMaterialMatte(materialPixels, livePixels, matte);
+        if (edgeMattes.Length != clearMattes.Length) edgeMattes = new int[clearMattes.Length];
+        Array.Fill(edgeMattes, (int)matte);
+        BlendScrollEdge(edgeMattes, clearMattes, bar.Width, clearEdge!.Height, clearAtBottom, blendAlpha: true);
+        int edgeTop = clearAtBottom ? bar.Height - clearEdge.Height : 0;
+        materialPixels.AsSpan(edgeTop * bar.Width, edgeMattes.Length).CopyTo(livePixels.AsSpan(edgeTop * bar.Width));
+        BackdropSnapshot.RemoveMatte(MemoryMarshal.Cast<int, uint>(livePixels.AsSpan(edgeTop * bar.Width, edgeMattes.Length)),
+            MemoryMarshal.Cast<int, uint>(edgeMattes.AsSpan()));
+        AlphaTicks += Stopwatch.GetTimestamp() - stage; Builds++;
+        materialVersion++;
+        invalidating = true;
+        try
+        {
+            foreach (Control child in surfaces.Keys)
+                if (child != bar && child.Visible) child.Invalidate();
+        }
+        finally { invalidating = false; }
+        (sampled, pending) = (pending, sampled);
+        sampleDpi = dpi;
+        sampleValid = true;
+        dirty = false;
+    }
+
+    // Blend the already filtered scene into its original pixels with a smoothstep
+    // mask. The mask follows bar coordinates, so child panels share the same fade.
+    internal static void BlendScrollEdge(Span<int> material, ReadOnlySpan<int> sharp, int width, int height, bool clearAtBottom, bool blendAlpha = false)
+    {
+        int rows = sharp.Length / width, top = clearAtBottom ? height - rows : 0;
+        Vector<uint> mask = new(255), alpha = new(0xFF000000);
+        for (int row = 0; row < rows; row++)
+        {
+            double distance = clearAtBottom ? rows - 1 - row : row;
+            double t = rows <= 1 ? 0 : distance / (rows - 1);
+            uint amount = (uint)Math.Round(256 * (1 - t * t * (3 - 2 * t)));
+            if (amount == 0) continue;
+            Span<uint> target = MemoryMarshal.Cast<int, uint>(material.Slice((top + row) * width, width));
+            ReadOnlySpan<uint> source = MemoryMarshal.Cast<int, uint>(sharp.Slice(row * width, width));
+            Vector<uint> clear = new(amount), blur = new(256 - amount);
+            int x = 0;
+            if (Vector.IsHardwareAccelerated)
+                for (; x <= width - Vector<uint>.Count; x += Vector<uint>.Count)
+                {
+                    Vector<uint> a = new(target.Slice(x)), b = new(source.Slice(x));
+                    Vector<uint> r = Vector.ShiftRightLogical((Vector.ShiftRightLogical(a, 16) & mask) * blur + (Vector.ShiftRightLogical(b, 16) & mask) * clear, 8);
+                    Vector<uint> g = Vector.ShiftRightLogical((Vector.ShiftRightLogical(a, 8) & mask) * blur + (Vector.ShiftRightLogical(b, 8) & mask) * clear, 8);
+                    Vector<uint> blue = Vector.ShiftRightLogical((a & mask) * blur + (b & mask) * clear, 8);
+                    Vector<uint> opacity = blendAlpha ? Vector.ShiftLeft(Vector.ShiftRightLogical(Vector.ShiftRightLogical(a, 24) * blur + Vector.ShiftRightLogical(b, 24) * clear, 8), 24) : alpha;
+                    (opacity | Vector.ShiftLeft(r, 16) | Vector.ShiftLeft(g, 8) | blue).CopyTo(target.Slice(x));
+                }
+            for (; x < width; x++)
+            {
+                uint a = target[x], b = source[x], inverse = 256 - amount;
+                uint r = (((a >> 16) & 255) * inverse + ((b >> 16) & 255) * amount) >> 8;
+                uint g = (((a >> 8) & 255) * inverse + ((b >> 8) & 255) * amount) >> 8;
+                uint blue = ((a & 255) * inverse + (b & 255) * amount) >> 8;
+                uint opacity = blendAlpha ? (((a >> 24) * inverse + (b >> 24) * amount) >> 8) << 24 : 0xFF000000;
+                target[x] = opacity | r << 16 | g << 8 | blue;
+            }
+        }
+    }
+
+    private uint MaterialMatteAt(int x, int y)
+    {
+        int rows = edgeMattes.Length / Math.Max(1, bar.Width), top = clearAtBottom ? bar.Height - rows : 0;
+        return x >= 0 && x < bar.Width && y >= top && y < top + rows
+            ? (uint)edgeMattes[(y - top) * bar.Width + x] : BackdropSnapshot.RemovedMatte(palette);
+    }
+
+    internal static void RemoveMaterialMatte(ReadOnlySpan<int> source, Span<int> destination, uint matte)
+    {
+        ReadOnlySpan<uint> input = MemoryMarshal.Cast<int, uint>(source);
+        Span<uint> output = MemoryMarshal.Cast<int, uint>(destination);
+        Vector<uint> mask = new(255), redMatte = new((matte >> 16) & 255),
+            greenMatte = new((matte >> 8) & 255), blueMatte = new(matte & 255), alpha = new((255 - (matte >> 24)) << 24);
+        int i = 0;
+        if (Vector.IsHardwareAccelerated)
+            for (; i <= input.Length - Vector<uint>.Count; i += Vector<uint>.Count)
+            {
+                Vector<uint> color = new(input.Slice(i));
+                Vector<uint> red = Vector.ShiftRightLogical(color, 16) & mask, green = Vector.ShiftRightLogical(color, 8) & mask, blue = color & mask;
+                red -= Vector.Min(red, redMatte);
+                green -= Vector.Min(green, greenMatte);
+                blue -= Vector.Min(blue, blueMatte);
+                (alpha | Vector.ShiftLeft(red, 16) | Vector.ShiftLeft(green, 8) | blue).CopyTo(output.Slice(i));
+            }
+        for (; i < input.Length; i++) output[i] = BackdropSnapshot.RemoveMatte(input[i] | 0xFF000000, matte);
+    }
+
+    internal static void PrintContent(Control control, Point origin, Rectangle parentClip, Rectangle area, nint dc)
     {
         if (!control.Visible) return;
         Rectangle bounds = new(origin, control.ClientSize);
@@ -217,7 +376,17 @@ internal sealed class SettingsBarBackdrop : IDisposable
             SetViewportOrgEx(dc, origin.X - area.X, origin.Y - area.Y, out _);
             SetTextColor(dc, ColorRef(control.ForeColor));
             SetBkColor(dc, ColorRef(control.BackColor));
-            SendMessage(control.Handle, 0x318, dc, (nint)(4 | 8)); // WM_PRINTCLIENT, original painting only.
+            if (BackgroundOnly(control))
+            {
+                nint brush = CreateSolidBrush(ColorRef(control.BackColor));
+                try
+                {
+                    NativeRect background = new() { Right = control.ClientSize.Width, Bottom = control.ClientSize.Height };
+                    FillRect(dc, ref background, brush);
+                }
+                finally { DeleteObject(brush); }
+            }
+            else SendMessage(control.Handle, 0x318, dc, (nint)(4 | 8)); // WM_PRINTCLIENT, original painting only.
         }
         finally { RestoreDC(dc, saved); }
         // Print only intersecting children, rather than capturing the entire settings page per frame.
@@ -233,7 +402,6 @@ internal sealed class SettingsBarBackdrop : IDisposable
         int materialWidth = material.Width, materialHeight = material.Height;
         Point location = bar.PointToClient(control.PointToScreen(Point.Empty));
         int key = palette.Background.ToArgb() & 0xFFFFFF;
-        uint matte = BackdropSnapshot.RemovedMatte(palette);
         for (int y = 0; y < size.Height; y++)
         for (int x = 0; x < size.Width; x++)
         {
@@ -258,7 +426,7 @@ internal sealed class SettingsBarBackdrop : IDisposable
             uint color = (uint)pixel | 0xFF000000;
             // Apply exactly the existing window material's matte, including each button's
             // original animated coverage. A new background color must not become an opaque patch.
-            pixels[at] = (int)(live ? BackdropSnapshot.RemoveMatte(color, BackdropSnapshot.CoveredMatte(matte, amount)) : color);
+            pixels[at] = (int)(live ? BackdropSnapshot.RemoveMatte(color, BackdropSnapshot.CoveredMatte(MaterialMatteAt(mx, my), amount)) : color);
         }
     }
 
@@ -274,6 +442,59 @@ internal sealed class SettingsBarBackdrop : IDisposable
         int left = Math.Max(0, -location.X), right = Math.Min(size.Width, material.Width - location.X);
         for (int y = Math.Max(0, -location.Y); y < Math.Min(size.Height, material.Height - location.Y) && right > left; y++)
             Array.Copy(source, (y + location.Y) * material.Width + location.X + left, pixels, y * size.Width + left, right - left);
+    }
+
+    private bool PaintBackground(Control control, nint dc, bool live)
+    {
+        if (material == null) return false;
+        Point location = bar.PointToClient(control.PointToScreen(Point.Empty));
+        Rectangle source = new(location, control.ClientSize);
+        if (!bar.ClientRectangle.Contains(source)) return false;
+        MaterialBuffer buffer = live ? glassBuffer : opaqueBuffer;
+        if (!buffer.Update(material.Size, live ? livePixels : materialPixels, materialVersion)) return false;
+        return BitBlt(dc, 0, 0, source.Width, source.Height, buffer.Dc, source.X, source.Y, 0x00CC0020);
+    }
+
+    // Layout panels share the bar's already composited pixels. Upload once per
+    // material revision, then let GDI copy each panel's clipped region directly.
+    private sealed class MaterialBuffer : IDisposable
+    {
+        internal nint Dc;
+        private nint bitmap, previous, bits;
+        private Size size;
+        private int version = -1;
+
+        internal bool Update(Size value, int[] pixels, int revision)
+        {
+            if (size != value || Dc == 0)
+            {
+                Dispose();
+                BitmapInfo info = new() { Size = 40, Width = value.Width, Height = -value.Height, Planes = 1, BitCount = 32 };
+                Dc = CreateCompatibleDC(0);
+                if (Dc != 0) bitmap = CreateDIBSection(Dc, ref info, 0, out bits, 0, 0);
+                if (bitmap == 0 || bits == 0) { Dispose(); return false; }
+                previous = SelectObject(Dc, bitmap);
+                if (previous == 0 || previous == (nint)(-1)) { previous = 0; Dispose(); return false; }
+                size = value;
+            }
+            if (version != revision)
+            {
+                GdiFlush();
+                Marshal.Copy(pixels, 0, bits, pixels.Length);
+                version = revision;
+            }
+            return true;
+        }
+
+        public void Dispose()
+        {
+            if (previous != 0 && Dc != 0) SelectObject(Dc, previous);
+            if (bitmap != 0) DeleteObject(bitmap);
+            if (Dc != 0) DeleteDC(Dc);
+            Dc = bitmap = previous = bits = 0;
+            size = default;
+            version = -1;
+        }
     }
 
     private static void Resize(ref Bitmap? bitmap, Size size, PixelFormat format = PixelFormat.Format32bppArgb)
@@ -320,6 +541,9 @@ internal sealed class SettingsBarBackdrop : IDisposable
         private Size size;
         private int[] pixels = [], originalPixels = [], coverage = [];
         private bool painting, nativeDirty = true;
+        private int paintedVersion = -1;
+        private Point paintedLocation;
+        private bool paintedLive;
         internal Surface(SettingsBarBackdrop owner, Control control)
         {
             this.owner = owner;
@@ -367,14 +591,27 @@ internal sealed class SettingsBarBackdrop : IDisposable
             try
             {
                 if (live && GetClipBox(target, out _) == 1) return;
+                owner.EnsureMaterial();
+                if (control is Panel && owner.PaintBackground(control, target, live))
+                {
+                    owner.SurfaceReuses++;
+                    message.Result = 0;
+                    return;
+                }
+                Point location = owner.bar.PointToClient(control.PointToScreen(Point.Empty));
+                bool composite = paintedVersion != owner.materialVersion || paintedLocation != location || paintedLive != live;
                 bool button = CaptureButtonPainter.HasBackdrop(control);
                 // These bars contain plain layout panels, labels and the existing buttons.
                 // Layout panels have no foreground; static text is captured only when it changes.
-                if (control is Panel) owner.CopyBackground(control, pixels, size, live);
+                if (control is Panel)
+                {
+                    if (composite) owner.CopyBackground(control, pixels, size, live);
+                }
                 else
                 {
                     if (nativeDirty)
                     {
+                        composite = true;
                         using (Graphics graphics = Graphics.FromHdc(memoryDc)) graphics.Clear(control.BackColor);
                         SetTextColor(memoryDc, ColorRef(control.ForeColor));
                         SetBkColor(memoryDc, ColorRef(control.BackColor));
@@ -390,9 +627,17 @@ internal sealed class SettingsBarBackdrop : IDisposable
                         }
                         nativeDirty = false;
                     }
-                    owner.Composite(control, originalPixels, pixels, size, button ? coverage : null, live);
+                    if (composite) owner.Composite(control, originalPixels, pixels, size, button ? coverage : null, live);
                 }
-                Marshal.Copy(pixels, 0, bits, pixels.Length);
+                if (composite)
+                {
+                    Marshal.Copy(pixels, 0, bits, pixels.Length);
+                    paintedVersion = owner.materialVersion;
+                    paintedLocation = location;
+                    paintedLive = live;
+                    owner.SurfaceComposites++;
+                }
+                else owner.SurfaceReuses++;
                 BitBlt(target, 0, 0, size.Width, size.Height, memoryDc, 0, 0, 0x00CC0020);
                 message.Result = 0;
             }
@@ -418,6 +663,7 @@ internal sealed class SettingsBarBackdrop : IDisposable
             originalPixels = new int[pixels.Length];
             coverage = new int[pixels.Length];
             nativeDirty = true;
+            paintedVersion = -1;
             return true;
         }
         private void ReleaseSurface()
@@ -433,13 +679,30 @@ internal sealed class SettingsBarBackdrop : IDisposable
         {
             if (size != control.ClientSize || area.IsEmpty) return;
             bool panel = control is Panel, button = CaptureButtonPainter.HasBackdrop(control);
+            Point location = owner.bar.PointToClient(control.PointToScreen(Point.Empty));
+            if (panel)
+            {
+                int rows = owner.edgeMattes.Length / owner.bar.Width;
+                int top = owner.clearAtBottom ? owner.bar.Height - rows : 0;
+                int sourceX = location.X + area.Left - origin.X;
+                for (int y = area.Top; y < area.Bottom; y++)
+                {
+                    Span<uint> output = snapshot.Pixels.AsSpan(y * snapshot.Size.Width + area.Left, area.Width);
+                    int sourceY = location.Y + y - origin.Y;
+                    if (sourceY >= top && sourceY < top + rows)
+                        MemoryMarshal.Cast<int, uint>(owner.edgeMattes.AsSpan((sourceY - top) * owner.bar.Width + sourceX, area.Width)).CopyTo(output);
+                    else output.Fill(snapshot.Background);
+                }
+                return;
+            }
             for (int y = area.Top; y < area.Bottom; y++)
             for (int x = area.Left; x < area.Right; x++)
             {
                 int at = (y - origin.Y) * size.Width + x - origin.X;
-                uint amount = panel ? 255u : button ? BackdropSnapshot.Coverage((uint)coverage[at]) :
+                uint amount = button ? BackdropSnapshot.Coverage((uint)coverage[at]) :
                     (originalPixels[at] & 0xFFFFFF) == key ? 255u : 0;
-                snapshot.Pixels[y * snapshot.Size.Width + x] = BackdropSnapshot.CoveredMatte(snapshot.Background, amount);
+                snapshot.Pixels[y * snapshot.Size.Width + x] = BackdropSnapshot.CoveredMatte(
+                    owner.MaterialMatteAt(location.X + x - origin.X, location.Y + y - origin.Y), amount);
             }
         }
         public void Dispose()
@@ -461,6 +724,7 @@ internal sealed class SettingsBarBackdrop : IDisposable
     {
         if (disposed) return;
         disposed = true;
+        if (scrollCache != null) scrollCache.Ready -= CacheReady;
         foreach ((Control control, Surface surface) in surfaces)
         {
             control.ControlAdded -= BarAdded;
@@ -481,7 +745,8 @@ internal sealed class SettingsBarBackdrop : IDisposable
             source.ControlAdded -= SourceAdded;
         }
         surfaces.Clear(); sources.Clear(); sourceVersions.Clear(); sampled.Clear(); pending.Clear();
-        capture?.Dispose(); sample?.Dispose(); material?.Dispose();
+        capture?.Dispose(); sample?.Dispose(); material?.Dispose(); clearEdge?.Dispose();
+        opaqueBuffer.Dispose(); glassBuffer.Dispose();
     }
 
     [DllImport("user32.dll")] private static extern nint SendMessage(nint window, int message, nint wParam, nint lParam);
@@ -510,6 +775,8 @@ internal sealed class SettingsBarBackdrop : IDisposable
     [DllImport("gdi32.dll")] private static extern nint CreateDIBSection(nint dc, ref BitmapInfo info, uint usage, out nint bits, nint section, uint offset);
     [DllImport("gdi32.dll")] private static extern nint SelectObject(nint dc, nint value);
     [DllImport("gdi32.dll")] private static extern bool DeleteObject(nint value);
+    [DllImport("gdi32.dll")] private static extern nint CreateSolidBrush(int color);
+    [DllImport("user32.dll")] private static extern int FillRect(nint dc, ref NativeRect rectangle, nint brush);
     [DllImport("gdi32.dll")] private static extern bool DeleteDC(nint dc);
     [DllImport("gdi32.dll")] private static extern bool GdiFlush();
     [DllImport("gdi32.dll")] private static extern bool BitBlt(nint target, int x, int y, int width, int height, nint source, int sourceX, int sourceY, uint operation);

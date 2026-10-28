@@ -12,6 +12,8 @@ internal static class EditorBackdropRegression
     [DllImport("dwmapi.dll")] private static extern int DwmFlush();
     [DllImport("user32.dll")] private static extern bool LogicalToPhysicalPointForPerMonitorDPI(nint window, ref Point point);
     [DllImport("user32.dll")] private static extern bool SetWindowPos(nint window, nint after, int x, int y, int width, int height, uint flags);
+    [DllImport("user32.dll")] private static extern nint WindowFromPoint(Point point);
+    [DllImport("user32.dll")] private static extern nint GetAncestor(nint window, uint flags);
     private static int checks;
     private static void Check(bool value, string message)
     {
@@ -52,6 +54,7 @@ internal static class EditorBackdropRegression
         string output = Path.GetFullPath("artifacts/editor-backdrop/" + main.DeviceDpi);
         Directory.CreateDirectory(output);
         bool motion = UiMotion.UserEnabled;
+        Point originalCursor = Cursor.Position;
         using BackgroundWindow background = new()
         {
             FormBorderStyle = FormBorderStyle.None, ShowInTaskbar = false,
@@ -77,6 +80,14 @@ internal static class EditorBackdropRegression
                 editor.TopMost = true; // Desktop sampling must not read another foreground window's pixels.
                 editor.Show(main);
                 await Task.Delay(350);
+                if (NativeMethods.GetForegroundWindow() != editor.Handle)
+                {
+                    Point title = editor.PointToScreen(new Point(editor.ClientSize.Width / 2, -SystemInformation.CaptionHeight / 2));
+                    Check(GetAncestor(WindowFromPoint(title), 2) == editor.Handle, "activation click targets the test editor title bar");
+                    Check(InputHelpers.SendMouseClick(title), "physical title-bar click activates the test editor");
+                    await Task.Delay(100);
+                }
+                Check(NativeMethods.GetForegroundWindow() == editor.Handle, "material sampling uses a foreground editor");
                 ToolStrip actions = EditorRegression.Actions(editor);
                 Form toolbar = actions.FindForm()!;
                 bool active = transparent && WindowBackdrop.IsSupported();
@@ -97,7 +108,7 @@ internal static class EditorBackdropRegression
                     editor.ForceActivate();
                     editor.Refresh();
                     toolbar.Refresh();
-                    await Task.Delay(450);
+                    await Task.Delay(700);
                     DwmFlush();
                     return new Screenshot { RemoveOutsideScreenArea = false }.CaptureRectangle(PhysicalBounds(editor));
                 }
@@ -131,7 +142,7 @@ internal static class EditorBackdropRegression
                 typeof(RegionCaptureForm).GetMethod("CloseWindow", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(editor, [RegionResult.Close]);
             }
         }
-        finally { UiMotion.UserEnabled = motion; CapturePalette.Current.ApplyLibraryTheme(); }
+        finally { UiMotion.UserEnabled = motion; Cursor.Position = originalCursor; CapturePalette.Current.ApplyLibraryTheme(); }
         Console.WriteLine($"Editor backdrop: {checks} checks passed.");
     }
 }

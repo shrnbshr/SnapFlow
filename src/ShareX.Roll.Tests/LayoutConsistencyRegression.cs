@@ -24,7 +24,7 @@ internal static class LayoutConsistencyRegression
 
     internal static async Task RunAsync(MainForm main)
     {
-        string output = Path.GetFullPath("artifacts/ui-consistency/" + main.DeviceDpi);
+        string output = Path.GetFullPath("artifacts/settings-wide-layout/consistency/" + main.DeviceDpi);
         Directory.CreateDirectory(output);
         ApplicationPreferences original = Field<ApplicationPreferences>(main, "preferences");
         Size originalSize = main.Size;
@@ -33,7 +33,7 @@ internal static class LayoutConsistencyRegression
             Call(main, "ReleaseCaptureHotkeys");
             foreach (LanguageMode language in new[] { LanguageMode.SimplifiedChinese, LanguageMode.TraditionalChinese, LanguageMode.English })
             foreach (AppearanceMode mode in new[] { AppearanceMode.Light, AppearanceMode.Dark })
-            foreach (bool compact in new[] { false, true })
+            foreach (string window in new[] { "regular", "minimum", "breakpoint", "wide" })
             {
                 ApplicationPreferences working = original.Clone();
                 working.Language = language;
@@ -46,9 +46,12 @@ internal static class LayoutConsistencyRegression
                 UiLanguage.Apply(language);
                 Call(main, "ApplyWorkspaceLanguage");
                 Call(main, "ApplyAppearance");
-                main.Size = compact ? main.MinimumSize : originalSize;
+                if (window == "minimum") main.Size = main.MinimumSize;
+                else if (window is "breakpoint" or "wide")
+                    main.ClientSize = new Size((window == "breakpoint" ? 1240 : 1440) * main.DeviceDpi / 96, 720 * main.DeviceDpi / 96);
+                else main.Size = originalSize;
                 await Task.Delay(40);
-                string context = $"{language}-{mode}-{(compact ? "minimum" : "regular")}";
+                string context = $"{language}-{mode}-{window}";
                 float dpi = main.DeviceDpi / 96f;
                 Control[] captures = ApplicationPreferences.Actions.Select(action => Find<Control>(main, action.Kind + "Button")).ToArray();
                 Check(captures.Select(button => button.Height).Distinct().Count() == 1, context + ": capture choices have equal heights");
@@ -61,9 +64,23 @@ internal static class LayoutConsistencyRegression
                 Control[] themes = new[] { "themeSystem", "themeLight", "themeDark" }.Select(name => Find<Control>(page, name)).ToArray();
                 Check(themes.Max(theme => theme.Width) - themes.Min(theme => theme.Width) <= 2,
                     context + ": the three appearance cards are equally wide");
+                foreach (Control theme in themes)
+                {
+                    RectangleF themeFace = ButtonElevation.CompactFaceBounds(theme.ClientSize, dpi);
+                    int textLeft = (int)(themeFace.Left + (ButtonSpacing.Horizontal + 54 + 12) * dpi);
+                    int textWidth = (int)(themeFace.Right - ButtonSpacing.Horizontal * dpi) - textLeft;
+                    Check(TextRenderer.MeasureText(theme.Text, theme.Font).Width <= textWidth,
+                        context + ": localized appearance caption fits beside its preview: " + theme.Text);
+                }
                 TableLayoutPanel[] rows = new[] { "transparencyRow", "motionRow", "languageRow", "saveFolderHeader" }
                     .Select(name => Find<TableLayoutPanel>(page, name)).ToArray();
-                Console.WriteLine("ROWS: " + context + " " + string.Join("; ", rows.Select(row => $"{row.Name}={row.Bounds} padding={row.Padding}")));
+                Console.WriteLine("ROWS: " + context + " " + string.Join("; ", rows.Select(row => $"{row.Name}={row.Bounds} minimum={row.MinimumSize} preferred={row.PreferredSize} padding={row.Padding}")));
+                foreach (TableLayoutPanel row in rows)
+                {
+                    FlowLayoutPanel caption = row.Controls.OfType<FlowLayoutPanel>().Single();
+                    Console.WriteLine($"CAPTION {context}/{row.Name}: bounds={caption.Bounds}; preferred={caption.PreferredSize}; constrained={caption.GetPreferredSize(new Size(caption.Width, 0))}; " +
+                        string.Join("; ", caption.Controls.OfType<Label>().Select(label => $"{label.Text}: bounds={label.Bounds}, maximum={label.MaximumSize}, preferred={label.PreferredSize}")));
+                }
                 Check(rows.Max(row => row.Height) - rows.Min(row => row.Height) <= 1, context + ": option headers share one height even when captions wrap");
                 Check(Find<Control>(page, "languageSelector").Height == 40 * dpi,
                     context + ": language selection uses the standard input height");
@@ -127,7 +144,7 @@ internal static class LayoutConsistencyRegression
                 Check(scrolling.Top - saving.Bottom == gap, context + ": revealing dependent controls preserves the option gap");
                 Save(content, Path.Combine(output, context + "-expanded.png"));
                 Call(main, "CloseSettings");
-                if (!compact)
+                if (window == "regular")
                 {
                     // Suppress only automatic region selection while inspecting the real scrolling window.
                     using ScrollingCaptureForm scroll = (ScrollingCaptureForm)Activator.CreateInstance(typeof(ScrollingCaptureForm), Private,

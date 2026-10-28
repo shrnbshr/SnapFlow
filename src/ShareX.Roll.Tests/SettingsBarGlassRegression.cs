@@ -55,7 +55,7 @@ internal static class SettingsBarGlassRegression
             await Task.Delay(400);
             SettingsPage page = Find<SettingsPage>(main, "SettingsPage");
             Panel viewport = Field<Panel>(page, "scroller");
-            Control content = Field<Control>(page, "content");
+            Control general = Find<Control>(page, "settingsGeneralColumn");
             Control heading = Field<Control>(page, "heading");
             Control footer = Field<Control>(page, "footer");
             object top = Field<SettingsBarBackdrop>(page, "headingBackdrop");
@@ -93,8 +93,20 @@ internal static class SettingsBarGlassRegression
                                 prefix + ": page-transition snapshots preserve the two foreground bars' material coverage");
                         }
                         foreach (var (owner, name) in new[] { (top, "top"), (bottom, "bottom") })
-                        foreach (string field in new[] { "capture", "sample", "material" })
-                            Field<Bitmap?>(owner, field)?.Save(Path.Combine(output, prefix + $"-{name}-{field}.png"), ImageFormat.Png);
+                        {
+                            Bitmap material = Field<Bitmap>(owner, "material");
+                            Bitmap sharp = Field<Bitmap>(owner, "clearEdge");
+                            int edgeY = name == "top" ? material.Height - 1 : 0;
+                            int sharpY = name == "top" ? sharp.Height - 1 : 0;
+                            Check(Enumerable.Range(0, material.Width).All(x => material.GetPixel(x, edgeY).ToArgb() == sharp.GetPixel(x, sharpY).ToArgb()),
+                                prefix + "/" + name + ": the content-facing edge is fully sharp across the entire bar");
+                            int[] live = Field<int[]>(owner, "livePixels"), mattes = Field<int[]>(owner, "clearMattes"), sharpPixels = Field<int[]>(owner, "clearPixels");
+                            Check(Enumerable.Range(0, material.Width).All(x => (uint)live[edgeY * material.Width + x] ==
+                                BackdropSnapshot.RemoveMatte((uint)sharpPixels[sharpY * material.Width + x] | 0xFF000000, (uint)mattes[sharpY * material.Width + x])),
+                                prefix + "/" + name + ": live edge transparency matches the source cards, text and background");
+                            foreach (string field in new[] { "capture", "sample", "material", "clearEdge" })
+                                Field<Bitmap?>(owner, field)?.Save(Path.Combine(output, prefix + $"-{name}-{field}.png"), ImageFormat.Png);
+                        }
                         Check(heading.Bounds == h && footer.Bounds == f, prefix + ": both fixed bars keep their geometry while scrolling");
                         Check(!viewport.HorizontalScroll.Visible, prefix + ": no horizontal scrolling");
                     }
@@ -124,8 +136,13 @@ internal static class SettingsBarGlassRegression
                 }
                 // A controlled content color change must reach the top bar. This distinguishes
                 // internal content translucency from merely showing the desktop's Acrylic.
+                // Use a scrollable wide window even when the monitor is tall enough to
+                // display all settings without a scrollbar at its maximized size.
+                main.WindowState = FormWindowState.Normal;
+                main.ClientSize = new Size(1440 * main.DeviceDpi / 96, 720 * main.DeviceDpi / 96);
+                await Task.Delay(150);
                 viewport.AutoScrollPosition = new Point(0, heading.Height);
-                Label probe = content.Controls.OfType<FlowLayoutPanel>().First().Controls.OfType<Label>().First();
+                Label probe = general.Controls.OfType<FlowLayoutPanel>().First().Controls.OfType<Label>().First();
                 Color originalColor = probe.BackColor;
                 try
                 {
@@ -142,6 +159,14 @@ internal static class SettingsBarGlassRegression
                     Check(red.R - red.B > blue.R - blue.B + 3, mode + ": scrolling settings content contributes to the bar background");
                 }
                 finally { probe.BackColor = originalColor; page.Refresh(); }
+                await Task.Delay(250);
+                heading.Invalidate();
+                heading.Update();
+                SettingsBarBackdrop backdrop = (SettingsBarBackdrop)top;
+                int builds = backdrop.Builds, composites = backdrop.SurfaceComposites, reused = backdrop.SurfaceReuses;
+                for (int i = 0; i < 4; i++) { heading.Invalidate(); heading.Update(); }
+                Check(backdrop.Builds == builds && backdrop.SurfaceComposites == composites && backdrop.SurfaceReuses > reused,
+                    mode + ": repainting an unchanged fixed bar reuses its material and shared native surface");
             }
         }
         finally

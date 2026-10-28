@@ -83,13 +83,15 @@ internal static class NavigationContinuityRegression
         finally { foreach (Bitmap frame in frames) frame.Dispose(); }
     }
 
-    internal static async Task RunAsync(MainForm main)
+    internal static async Task RunAsync(MainForm main, bool maximized = false)
     {
-        string output = Path.GetFullPath("artifacts/navigation-fix/" + (Environment.GetEnvironmentVariable("SNAPFLOW_TEST_STAGE") ?? "fixed") + "/" + main.DeviceDpi);
+        string output = Path.GetFullPath("artifacts/navigation-fix/" + (Environment.GetEnvironmentVariable("SNAPFLOW_TEST_STAGE") ?? "fixed") + "/" + main.DeviceDpi + (maximized ? "-max" : ""));
         Directory.CreateDirectory(output);
         ApplicationPreferences preferences = Field<ApplicationPreferences>(main, "preferences");
         AppearanceMode originalMode = preferences.Appearance;
         bool originalMotion = preferences.AnimationsEnabled;
+        FormWindowState originalState = main.WindowState;
+        Point originalCursor = Cursor.Position;
         List<string> failures = new();
         Control workspace = Field<Control>(main, "workspace");
         void VerifyCover(object? sender, EventArgs args)
@@ -103,6 +105,7 @@ internal static class NavigationContinuityRegression
         try
         {
             main.TopMost = true;
+            if (maximized) main.WindowState = FormWindowState.Maximized;
             main.ForceActivate();
             preferences.AnimationsEnabled = true;
             foreach (AppearanceMode mode in new[] { AppearanceMode.Dark, AppearanceMode.Light })
@@ -112,7 +115,7 @@ internal static class NavigationContinuityRegression
                 if (!UiMotion.Enabled) throw new InvalidOperationException("Windows animation must be enabled for this regression");
                 foreach (string direction in new[] { "OpenSettings", "CloseSettings" })
                 {
-                    InputHelpers.SendMouseMove(new Point(main.Right + 10, main.Top + 20));
+                    Cursor.Position = Point.Empty;
                     main.Update();
                     await Task.Delay(250);
                     using Bitmap before = Capture(main);
@@ -154,6 +157,8 @@ internal static class NavigationContinuityRegression
             preferences.AnimationsEnabled = originalMotion;
             Call(main, "ApplyAppearance");
             main.TopMost = false;
+            main.WindowState = originalState;
+            Cursor.Position = originalCursor;
         }
     }
 }

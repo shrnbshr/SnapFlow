@@ -47,12 +47,18 @@ internal static class Program
         }
         Stopwatch startup = Stopwatch.StartNew();
         using MainForm main = new();
+        if (args.Contains("--startup-painting")) StartupPaintingRegression.ObserveStartup(main);
+        if (args.Contains("--opening-presentation")) OpeningPresentationRegression.ObserveStartup(main);
         main.Shown += async (_, _) =>
         {
             SettingsOpenLatencyRegression.StartupMilliseconds = startup.Elapsed.TotalMilliseconds;
             try
             {
-                if (args.Contains("--button-hover")) await ButtonHoverRegression.RunAsync(main, args.Contains("--baseline"), args.Contains("--all-button-types"));
+                if (args.Contains("--editor-initialization")) EditorOpeningFramesRegression.VerifyInitialization(args.Contains("--baseline"));
+                else if (args.Contains("--editor-opening-frames")) await EditorOpeningFramesRegression.RunAsync(main, args.Contains("--baseline"), args.Contains("--pointer-opening"));
+                else if (args.Contains("--opening-presentation")) await OpeningPresentationRegression.RunAsync(main, args.Contains("--baseline"));
+                else if (args.Contains("--startup-painting")) await StartupPaintingRegression.RunAsync(main, args.Contains("--baseline"));
+                else if (args.Contains("--button-hover")) await ButtonHoverRegression.RunAsync(main, args.Contains("--baseline"), args.Contains("--all-button-types"));
                 else if (args.Contains("--transparency-startup")) TransparencySettingsRegression.VerifyStartup(main, !args.Contains("--expected-off"));
                 else if (args.Contains("--theme-transition")) await ThemeTransitionRegression.RunAsync(main);
                 else if (args.Contains("--transparency-flicker")) await TransparencyFlickerRegression.RunAsync(main, args.Contains("--baseline"));
@@ -70,6 +76,7 @@ internal static class Program
                 else if (args.Contains("--settings-reuse")) await SettingsPageReuseRegression.RunAsync(main);
                 else if (args.Contains("--settings-open-latency")) await SettingsOpenLatencyRegression.RunAsync(main, args.Contains("--baseline"));
                 else if (args.Contains("--settings-motion-performance")) await SettingsMotionPerformanceRegression.RunAsync(main, args.Contains("--baseline"));
+                else if (args.Contains("--settings-scroll-cache")) await SettingsScrollCacheRegression.RunAsync(main);
                 else if (args.Contains("--settings-scroll-presentation")) await SettingsScrollPresentationRegression.RunAsync(main, args.Contains("--baseline"), args.Contains("--maximized"));
                 else if (args.Contains("--settings-scroll-motion")) await SettingsScrollMotionRegression.RunAsync(main, args.Contains("--baseline"), args.Contains("--record-scroll"));
                 else if (args.Contains("--preview-zoom")) await PreviewZoomRegression.RunAsync(main);
@@ -99,7 +106,7 @@ internal static class Program
                 else if (args.Contains("--motion")) await MotionRegression.RunAsync(main);
                 else if (args.Contains("--language")) await LanguageRegression.RunAsync(main);
                 else if (args.Contains("--window-frame")) await WindowFrameRegression.RunAsync(main);
-                else if (args.Contains("--navigation-continuity")) await NavigationContinuityRegression.RunAsync(main);
+                else if (args.Contains("--navigation-continuity")) await NavigationContinuityRegression.RunAsync(main, args.Contains("--maximized"));
                 else if (args.Contains("--theme-background")) await ThemeBackgroundRegression.RunAsync(main);
                 else if (args.Contains("--ui")) await UiRegression.RunAsync(main);
                 else if (args.Contains("--settings")) await SettingsRegression.RunAsync(main);

@@ -297,6 +297,15 @@ namespace ShareX.ScreenCaptureLib
             }
 
             Shown += RegionCaptureForm_Shown;
+            if (IsEditorMode && Options.UseEditorChrome)
+            {
+                Load += (sender, e) =>
+                {
+                    OnMoved();
+                    CenterCanvas();
+                    InitializeEditorViewport();
+                };
+            }
             KeyDown += RegionCaptureForm_KeyDown;
             MouseDown += RegionCaptureForm_MouseDown;
             MouseWheel += RegionCaptureForm_MouseWheel;
@@ -569,8 +578,11 @@ namespace ShareX.ScreenCaptureLib
         {
             this.ForceActivate();
 
-            OnMoved();
-            CenterCanvas();
+            if (!IsEditorMode || !Options.UseEditorChrome)
+            {
+                OnMoved();
+                CenterCanvas();
+            }
 
             if (Options.EditorAutoCopyImage && IsEditorMode)
             {
@@ -587,13 +599,15 @@ namespace ShareX.ScreenCaptureLib
                     editorPanTipAnimation.Start();
                 }
 
-                if (Options.ZoomToFitOnOpen)
-                {
-                    ZoomToFit();
-                }
-                if (Options.ImageEditorCropFromEdges && ShapeManager.CurrentTool == ShapeType.ToolCrop)
-                    ShapeManager.AddCropTool();
+                if (!Options.UseEditorChrome) InitializeEditorViewport();
             }
+        }
+
+        private void InitializeEditorViewport()
+        {
+            if (Options.ZoomToFitOnOpen) ZoomToFit();
+            if (Options.ImageEditorCropFromEdges && ShapeManager.CurrentTool == ShapeType.ToolCrop)
+                ShapeManager.AddCropTool();
         }
 
         private void RegionCaptureForm_Resize(object sender, EventArgs e)

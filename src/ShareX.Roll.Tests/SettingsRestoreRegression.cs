@@ -52,7 +52,7 @@ internal static class SettingsRestoreRegression
 
     internal static async Task RunAsync(MainForm main, bool baseline)
     {
-        string output = Path.GetFullPath("artifacts/settings-restore/" + main.DeviceDpi);
+        string output = Path.GetFullPath("artifacts/settings-wide-layout/restore/" + main.DeviceDpi);
         Directory.CreateDirectory(output);
         ApplicationPreferences original = Field<ApplicationPreferences>(main, "preferences");
         bool topmost = main.TopMost;
@@ -64,8 +64,12 @@ internal static class SettingsRestoreRegression
             main.ForceActivate();
             InputHelpers.SendMouseMove(new Point(main.Left - 20, main.Top));
             Call(main, "ReleaseCaptureHotkeys");
+            foreach (bool maximized in new[] { false, true })
             foreach (bool glass in new[] { true, false })
             {
+                main.WindowState = maximized ? FormWindowState.Maximized : FormWindowState.Normal;
+                if (!maximized) main.Size = size;
+                Cursor.Position = Point.Empty;
                 ApplicationPreferences working = original.Clone();
                 working.Appearance = AppearanceMode.Dark;
                 working.AnimationsEnabled = true;
@@ -84,7 +88,7 @@ internal static class SettingsRestoreRegression
                     if (expanded) { Find<Button>(page, "scrollingOptionsButton").PerformClick(); await Task.Delay(300); }
                     foreach (double progress in new[] { 0, .28, .8 })
                     {
-                        string context = $"glass-{glass}-expanded-{expanded}-scroll-{progress}";
+                        string context = $"{(maximized ? "maximized" : "normal")}-glass-{glass}-expanded-{expanded}-scroll-{progress}";
                         viewport.AutoScrollPosition = new Point(0, (int)((viewport.DisplayRectangle.Height - viewport.ClientSize.Height) * progress));
                         // Establish a fully painted reference after this synthetic native scroll.
                         viewport.Invalidate(true);
@@ -98,7 +102,7 @@ internal static class SettingsRestoreRegression
                         main.WindowState = FormWindowState.Minimized;
                         await Task.Delay(150);
                         Describe(page, context + "/minimized");
-                        main.WindowState = FormWindowState.Normal;
+                        main.WindowState = maximized ? FormWindowState.Maximized : FormWindowState.Normal;
                         main.ForceActivate();
                         await Task.Delay(350);
                         Describe(page, context + "/restored");

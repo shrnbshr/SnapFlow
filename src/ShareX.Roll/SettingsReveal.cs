@@ -103,8 +103,15 @@ internal sealed class SettingsReveal : Panel
     {
         if (Parent is not TableLayoutPanel) return false;
         for (Control? parent = Parent; parent is TableLayoutPanel table; parent = parent.Parent)
-            if (table.ColumnCount != 1 || table.Dock != DockStyle.Top || !table.AutoSize ||
+        {
+            if (table.Dock != DockStyle.Top || !table.AutoSize ||
                 table.MinimumSize.Height != 0 || table.MaximumSize.Height != 0) return false;
+            // A single row of top-aligned columns needs only a new maximum height.
+            // Keep the existing clipping animation without laying out inputs per frame.
+            if (table.ColumnCount != 1 && (table.RowCount != 1 || table.Controls.Cast<Control>().Any(child =>
+                child.Dock != DockStyle.Top || table.GetRow(child) != 0 ||
+                table.GetRowSpan(child) != 1 || table.GetColumnSpan(child) != 1))) return false;
+        }
         return true;
     }
 
@@ -114,15 +121,27 @@ internal sealed class SettingsReveal : Panel
         int previousBottom = Bottom;
         Height = height;
         Control child = this;
-        for (Control? parent = Parent; parent is TableLayoutPanel; parent = parent.Parent)
+        for (Control? parent = Parent; parent is TableLayoutPanel table; parent = parent.Parent)
         {
             // Only the revealed row changes height. Keep the already measured native
             // controls at their existing sizes and translate the following rows together.
-            foreach (Control sibling in parent.Controls)
-                if (sibling != child && sibling.Visible && sibling.Top >= previousBottom)
-                    sibling.Top += delta;
-            previousBottom = parent.Bottom;
-            parent.Height += delta;
+            int oldBottom = parent.Bottom;
+            if (table.ColumnCount == 1)
+            {
+                foreach (Control sibling in parent.Controls)
+                    if (sibling != child && sibling.Visible && sibling.Top >= previousBottom)
+                        sibling.Top += delta;
+                parent.Height += delta;
+            }
+            else
+            {
+                int oldHeight = parent.Height;
+                parent.Height = parent.Padding.Bottom + parent.Controls.Cast<Control>()
+                    .Where(sibling => sibling.Visible).Select(sibling => sibling.Bottom + sibling.Margin.Bottom)
+                    .DefaultIfEmpty(parent.Padding.Top).Max();
+                delta = parent.Height - oldHeight;
+            }
+            previousBottom = oldBottom;
             child = parent;
         }
     }

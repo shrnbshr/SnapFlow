@@ -338,7 +338,9 @@ namespace ShareX.ScreenCaptureLib
 
             ResizeNodes[(int)NodePosition.BottomRight].Order = 10;
 
-            form.Shown += form_Shown;
+            // Embedded editor chrome must exist before the first visible canvas frame.
+            if (form.IsEditorMode && Options.UseEditorChrome) form.Load += form_Shown;
+            else form.Shown += form_Shown;
             form.LostFocus += form_LostFocus;
             form.MouseDown += form_MouseDown;
             form.MouseUp += form_MouseUp;

@@ -211,6 +211,9 @@ public sealed partial class MainForm
         workspace.Controls.Add(status, 0, 2);
         Controls.Add(workspace);
         // Initial sizes are logical pixels; WinForms applies the first DPI scale afterwards.
+        // Load runs after that scale and the native handles exist. Do the initial
+        // responsive layout before the first frame, rather than its queued follow-up.
+        Load += (_, _) => ReflowToolbar();
     }
 
     private void RefreshPreviewToolbar()

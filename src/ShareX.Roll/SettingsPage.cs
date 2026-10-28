@@ -31,7 +31,11 @@ internal sealed class SettingsPage : UserControl, IBackdropSnapshotOverlay, IBac
     private readonly SettingsScrollHost scrollHost;
     private readonly SettingsBarBackdrop headingBackdrop;
     private readonly SettingsBarBackdrop footerBackdrop;
-    private readonly TableLayoutPanel content = new BackgroundLayout { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, Margin = Padding.Empty };
+    private readonly SettingsScrollBackdropCache scrollBackdrop;
+    private readonly TableLayoutPanel content = new BackgroundLayout { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 1, Margin = Padding.Empty };
+    private readonly TableLayoutPanel generalColumn = CreateColumn("settingsGeneralColumn");
+    private readonly TableLayoutPanel referenceColumn = CreateColumn("settingsReferenceColumn");
+    private bool wideLayout;
     private readonly TableLayoutPanel shortcuts = new();
     private readonly List<ModeGlyph> glyphs = new();
     private readonly MotionToggle motion = new() { Name = "animationsToggle", Size = new Size(46, 28), AccessibleName = L("Motion") };
@@ -43,6 +47,8 @@ internal sealed class SettingsPage : UserControl, IBackdropSnapshotOverlay, IBac
     {
         SuspendLayout();
         content.SuspendLayout();
+        generalColumn.SuspendLayout();
+        referenceColumn.SuspendLayout();
         scrollCanvas.SuspendLayout();
         shortcuts.SuspendLayout();
         Name = "SettingsPage";
@@ -63,11 +69,20 @@ internal sealed class SettingsPage : UserControl, IBackdropSnapshotOverlay, IBac
         heading.Controls.Add(title, 0, 0);
 
         content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        content.RowCount = 2;
+        content.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        content.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        content.Controls.Add(generalColumn, 0, 0);
+        content.Controls.Add(referenceColumn, 0, 1);
+        generalColumn.TabIndex = 0;
+        referenceColumn.TabIndex = 1;
+        TableLayoutPanel section = generalColumn;
         void Add(Control control)
         {
-            int row = content.RowCount++;
-            content.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            content.Controls.Add(control, 0, row);
+            int row = section.RowCount++;
+            control.TabIndex = row;
+            section.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            section.Controls.Add(control, 0, row);
         }
         Add(SectionHeading(L("Appearance"), ""));
         TableLayoutPanel appearance = new() { Name = "appearanceOptions", ColumnCount = 5, RowCount = 1, Dock = DockStyle.Top, Height = 88, Margin = new Padding(0, 0, 0, SettingsLayout.Gap) };
@@ -160,6 +175,7 @@ internal sealed class SettingsPage : UserControl, IBackdropSnapshotOverlay, IBac
         scrollingRow.Controls.Add(scrollingHeader, 0, 0);
         scrollingRow.Controls.Add(scrollingReveal, 0, 1);
         Add(scrollingRow);
+        section = referenceColumn;
         Add(SectionHeading(L("Shortcuts"), L("ShortcutsHint")));
         shortcuts.Name = "shortcutList";
         shortcuts.Dock = DockStyle.Top;
@@ -273,8 +289,10 @@ internal sealed class SettingsPage : UserControl, IBackdropSnapshotOverlay, IBac
         actions.Controls.Add(reset, 0, 0);
         actions.Controls.Add(buttons, 1, 0);
         footer.Controls.Add(actions, 0, 1);
-        headingBackdrop = new SettingsBarBackdrop(heading, content);
-        footerBackdrop = new SettingsBarBackdrop(footer, content);
+        scrollBackdrop = new SettingsScrollBackdropCache(content, () => scrollHost.IsApplyingScroll,
+            () => scrollHost.IsScrolling || scrollingReveal.IsAnimating || FindForm()?.Controls.OfType<PageTransition>().Any(transition => transition.Visible) == true);
+        headingBackdrop = new SettingsBarBackdrop(heading, content, scrollBackdrop, clearAtBottom: true);
+        footerBackdrop = new SettingsBarBackdrop(footer, content, scrollBackdrop);
         Controls.Add(scrollHost);
         Controls.Add(heading);
         Controls.Add(footer);
@@ -292,6 +310,8 @@ internal sealed class SettingsPage : UserControl, IBackdropSnapshotOverlay, IBac
         ShowFeedback(L("SaveHint"));
         UiLanguage.ApplyTextDirection(this);
         shortcuts.ResumeLayout(true);
+        generalColumn.ResumeLayout(true);
+        referenceColumn.ResumeLayout(true);
         content.ResumeLayout(true);
         scrollCanvas.ResumeLayout(true);
         initializing = false;
@@ -305,6 +325,47 @@ internal sealed class SettingsPage : UserControl, IBackdropSnapshotOverlay, IBac
         MinimumSize = new Size(width, ButtonSpacing.ActionHeight), Padding = ButtonSpacing.ActionPadding, Margin = Padding.Empty,
         Cursor = Cursors.Hand, FlatStyle = FlatStyle.Flat
     };
+
+    private static TableLayoutPanel CreateColumn(string name)
+    {
+        TableLayoutPanel column = new BackgroundLayout
+        {
+            Name = name, Dock = DockStyle.Top, AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 1, Margin = Padding.Empty
+        };
+        column.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        return column;
+    }
+
+    private void ArrangeColumns(bool wide, int gap)
+    {
+        if (wideLayout == wide)
+        {
+            if (wide && content.ColumnStyles[1].Width != gap) content.ColumnStyles[1].Width = gap;
+            return;
+        }
+        content.SuspendLayout();
+        try
+        {
+            // Move the existing stacks between cells, retaining their controls, draft,
+            // tab order and disclosure animation instead of rebuilding the settings.
+            wideLayout = wide;
+            content.ColumnStyles.Clear();
+            content.RowStyles.Clear();
+            content.ColumnCount = wide ? 3 : 1;
+            content.SetCellPosition(referenceColumn, wide ? new TableLayoutPanelCellPosition(2, 0) : new TableLayoutPanelCellPosition(0, 1));
+            content.RowCount = wide ? 1 : 2;
+            content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, wide ? 50 : 100));
+            content.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            if (wide)
+            {
+                content.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, gap));
+                content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+            }
+            else content.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        }
+        finally { content.ResumeLayout(true); }
+    }
 
     private Control SectionHeading(string title, string hint)
     {
@@ -427,7 +488,8 @@ internal sealed class SettingsPage : UserControl, IBackdropSnapshotOverlay, IBac
         float scale = DeviceDpi / 96f;
         int gap = (int)(28 * scale);
         int width = Math.Max(1, ClientSize.Width);
-        int readingWidth = Math.Max(1, Math.Min(width - gap * 2, (int)(760 * scale)));
+        bool wide = width >= (int)(1240 * scale);
+        int readingWidth = Math.Max(1, Math.Min(width - gap * 2, (int)((wide ? 1440 : 760) * scale)));
         int left = (width - readingWidth) / 2;
         int right = width - readingWidth - left;
         Rectangle previousHeading = heading.Bounds, previousFooter = footer.Bounds;
@@ -435,9 +497,17 @@ internal sealed class SettingsPage : UserControl, IBackdropSnapshotOverlay, IBac
         arrangingOverlay = true;
         try
         {
-            scroller.Padding = new Padding(left, 0, right, 0);
-            // Frost the full viewport width; keep each bar's contents in the original
-            // reading column. Leave the existing scrollbar's hit area unobstructed.
+            // Set the final width before measuring the new columns. An intermediate
+            // narrow column can otherwise leave an obsolete wrapped row height.
+            content.SuspendLayout();
+            try
+            {
+                scroller.Padding = new Padding(left, 0, right, 0);
+                ArrangeColumns(wide, gap);
+            }
+            finally { content.ResumeLayout(true); }
+            // Frost the full viewport width; align both bars with the responsive
+            // content area. Leave the existing scrollbar's hit area unobstructed.
             Control? track = scrollHost.Controls["settingsScrollBar"];
             int barWidth = Math.Max(1, width - (track is { Visible: true } ? track.Width : 0));
             int barRight = Math.Max(0, barWidth - left - readingWidth);
@@ -471,14 +541,24 @@ internal sealed class SettingsPage : UserControl, IBackdropSnapshotOverlay, IBac
         // Scroll moves native child windows but leaves their paints queued. Submit content
         // first, then its fixed glass bars, before presenting the thumb. No new invalidation:
         // preserve native scroll damage and avoid sampling the bars twice in one frame.
+        long stage = System.Diagnostics.Stopwatch.GetTimestamp();
         Submit(scroller);
+        ContentPresentTicks += System.Diagnostics.Stopwatch.GetTimestamp() - stage;
+        stage = System.Diagnostics.Stopwatch.GetTimestamp();
         Submit(heading);
+        HeadingPresentTicks += System.Diagnostics.Stopwatch.GetTimestamp() - stage;
+        stage = System.Diagnostics.Stopwatch.GetTimestamp();
         Submit(footer);
+        FooterPresentTicks += System.Diagnostics.Stopwatch.GetTimestamp() - stage;
+        PresentedFrames++;
         static void Submit(Control control)
         {
             if (control.IsHandleCreated) RedrawWindow(control.Handle, 0, 0, 0x0100 | 0x0080); // RDW_UPDATENOW | RDW_ALLCHILDREN.
         }
     }
+
+    internal long ContentPresentTicks, HeadingPresentTicks, FooterPresentTicks;
+    internal int PresentedFrames;
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -488,9 +568,22 @@ internal sealed class SettingsPage : UserControl, IBackdropSnapshotOverlay, IBac
 
     private sealed class OverlayViewport : SettingsScrollViewport, IBackdropBackground
     {
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                CreateParams parameters = base.CreateParams;
+                // PresentScrollFrame submits every invalidated native child before
+                // the fixed bars. Avoid a second full-viewport descendant buffer.
+                parameters.ExStyle &= ~0x02000000; // WS_EX_COMPOSITED.
+                return parameters;
+            }
+        }
         internal Padding CoveredEdges { get; set; }
+        internal bool PreserveScrollPosition { get; set; }
         protected override Point ScrollToControl(Control activeControl)
         {
+            if (PreserveScrollPosition || FindForm()?.WindowState == FormWindowState.Minimized) return AutoScrollPosition;
             Point target = base.ScrollToControl(activeControl);
             Rectangle bounds = RectangleToClient(activeControl.RectangleToScreen(activeControl.ClientRectangle));
             bounds.Offset(target.X - AutoScrollPosition.X, target.Y - AutoScrollPosition.Y);
@@ -501,7 +594,19 @@ internal sealed class SettingsPage : UserControl, IBackdropSnapshotOverlay, IBac
         }
     }
 
-    protected override void OnResize(EventArgs e) { EndScrollingReveal(); base.OnResize(e); ArrangePage(); }
+    protected override void OnResize(EventArgs e)
+    {
+        OverlayViewport viewport = (OverlayViewport)scroller;
+        bool minimized = ClientSize.Width <= 0 || ClientSize.Height <= 0 || FindForm()?.WindowState == FormWindowState.Minimized;
+        if (minimized) viewport.PreserveScrollPosition = true;
+        EndScrollingReveal();
+        base.OnResize(e);
+        ArrangePage();
+        // Windows restores focus before it finishes activating a minimized window.
+        // That automatic focus restoration must not scroll away from the saved view.
+        if (!minimized && viewport.PreserveScrollPosition && IsHandleCreated)
+            BeginInvoke((Action)(() => { if (!IsDisposed) viewport.PreserveScrollPosition = false; }));
+    }
     protected override void OnDpiChangedAfterParent(EventArgs e) { base.OnDpiChangedAfterParent(e); ArrangePage(); }
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
@@ -529,6 +634,7 @@ internal sealed class SettingsPage : UserControl, IBackdropSnapshotOverlay, IBac
             EndScrollingReveal();
             headingBackdrop?.Dispose();
             footerBackdrop?.Dispose();
+            scrollBackdrop?.Dispose();
         }
         base.Dispose(disposing);
     }

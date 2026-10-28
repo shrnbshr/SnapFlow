@@ -189,6 +189,7 @@ internal sealed class WindowBackdrop : IDisposable
         private bool pixelsDirty = true;
         private CapturePalette? paintedPalette;
         private bool paintedActive;
+        private bool cloakedForShow;
 
         internal PaintWindow(WindowBackdrop owner, Control control)
         {
@@ -226,6 +227,34 @@ internal sealed class WindowBackdrop : IDisposable
 
         protected override void WndProc(ref Message message)
         {
+            if (control == owner.form && message.Msg == 0x46 &&
+                (Marshal.PtrToStructure<WindowPosition>(message.LParam).Flags & 0x40) != 0) // SWP_SHOWWINDOW.
+            {
+                // DWM keeps composing a cloaked window, so its initial client and child
+                // surfaces can finish without exposing their unpainted pixels on screen.
+                int cloak = 1;
+                cloakedForShow = NativeMethods.DwmSetWindowAttribute(Handle, 13, ref cloak, sizeof(int)) >= 0;
+            }
+            if (control == owner.form && message.Msg == 0x47 &&
+                (Marshal.PtrToStructure<WindowPosition>(message.LParam).Flags & 0x40) != 0)
+            {
+                try
+                {
+                    base.WndProc(ref message);
+                    RedrawWindow(message.HWnd, 0, 0, 0x0001 | 0x0004 | 0x0080 | 0x0100 | 0x0400);
+                    GdiFlush();
+                }
+                finally
+                {
+                    if (cloakedForShow)
+                    {
+                        int cloak = 0;
+                        NativeMethods.DwmSetWindowAttribute(Handle, 13, ref cloak, sizeof(int));
+                        cloakedForShow = false;
+                    }
+                }
+                return;
+            }
             if (owner.extended && message.Msg == 0x14 && WindowFromDC(message.WParam) != IntPtr.Zero)
             {
                 // A live background erase would expose opaque GDI pixels until the complete alpha frame arrives.
@@ -422,6 +451,12 @@ internal sealed class WindowBackdrop : IDisposable
     }
 
     [StructLayout(LayoutKind.Sequential)] private struct NativeRect { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] private struct WindowPosition
+    {
+        public nint Window, InsertAfter;
+        public int X, Y, Width, Height;
+        public uint Flags;
+    }
     [StructLayout(LayoutKind.Sequential)] private struct PaintStruct
     {
         public IntPtr Dc; public int Erase; public NativeRect Rect; public int Restore, IncUpdate;

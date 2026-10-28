@@ -17,6 +17,9 @@ internal static class EditorChrome
         window.AutoScaleMode = AutoScaleMode.None;
         window.Size = new(editor.ClientSize.Width, S(148));
         tools.AutoSize = false;
+        // Native ToolStrip initialization can otherwise clamp the first layout to
+        // its upstream 30px minimum until the queued Shown layout corrects it.
+        tools.MinimumSize = new Size(tools.MinimumSize.Width, S(56));
         tools.ShowItemToolTips = true;
         tools.TabStop = true;
         tools.AccessibleName = L("EditorTools");
@@ -192,7 +195,9 @@ internal static class EditorChrome
             LayoutChrome();
         }
         // The native child toolbar shares the editor's backdrop rather than stacking two glass windows.
-        window.Shown += (_, _) => Style();
+        // The library finishes its generic theme pass before Show. Style in Load so
+        // the child HWND never becomes visible with the default toolbar renderer.
+        window.Load += (_, _) => Style();
         editor.Shown += (_, _) => LayoutChrome();
         editor.Resize += (_, _) => LayoutChrome();
         // Child disposal can reset Control.Font to a shared default. Dispose only fonts we own.

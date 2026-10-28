@@ -83,12 +83,17 @@ internal static class SettingsMotionPerformanceRegression
                 Find<Button>(page, "saveSettingsButton").Focus();
                 viewport.AutoScrollPosition = Point.Empty;
                 await Task.Delay(200);
+                SettingsScrollBackdropCache cache = Field<SettingsScrollBackdropCache>(page, "scrollBackdrop");
+                for (int wait = 0; wait < 80 && !cache.IsReady; wait++) await Task.Delay(25);
+                Console.WriteLine($"CACHE {theme}-{maximized}: ready={cache.IsReady}, builds={cache.Builds}, hits={cache.Hits}");
                 if (!UiMotion.Enabled) throw new InvalidOperationException("Real animation measurements require enabled Windows and app animations");
                 Dictionary<string, (long Ticks, int Count)> times = new();
                 Probe[] probes = Descendants(page).Select(c => new Probe(c, times)).ToArray();
                 string context = theme + (maximized ? "-max" : "-normal");
                 try
                 {
+                    long contentTicks = page.ContentPresentTicks, headingTicks = page.HeadingPresentTicks, footerTicks = page.FooterPresentTicks;
+                    int submittedFrames = page.PresentedFrames;
                     int updates = host.ScrollUpdates;
                     long ticks = host.ScrollUpdateTicks;
                     List<double> frames = new(); Stopwatch clock = Stopwatch.StartNew();
@@ -98,17 +103,23 @@ internal static class SettingsMotionPerformanceRegression
                         int offset = -viewport.AutoScrollPosition.Y;
                         if (offset != previousOffset) { frames.Add(clock.Elapsed.TotalMilliseconds); previousOffset = offset; }
                     };
-                    bar.Paint += painted;
-                    for (int i = 0; i < 6; i++)
+                    bool scrollable = viewport.DisplayRectangle.Height > viewport.ClientSize.Height;
+                    if (scrollable)
                     {
-                        Call(viewport, "OnMouseWheel", new HandledMouseEventArgs(MouseButtons.None, 0, 8, 8, -120));
-                        await Task.Delay(12);
+                        bar.Paint += painted;
+                        for (int i = 0; i < 6; i++)
+                        {
+                            Call(viewport, "OnMouseWheel", new HandledMouseEventArgs(MouseButtons.None, 0, 8, 8, -120));
+                            await Task.Delay(12);
+                        }
+                        await Task.Delay(450);
+                        bar.Paint -= painted;
                     }
-                    await Task.Delay(450);
-                    bar.Paint -= painted;
                     int count = host.ScrollUpdates - updates;
+                    Console.WriteLine($"CACHE SCROLL {context}: ready={cache.IsReady}, builds={cache.Builds}, hits={cache.Hits}, last={cache.LastChange}");
                     Console.WriteLine($"COST {context}-scroll: updates={count}, meanSubmitMs={(host.ScrollUpdateTicks - ticks) * 1000d / Stopwatch.Frequency / Math.Max(1, count):F3}");
-                    Cadence(context + "-scroll", frames);
+                    if (scrollable) Cadence(context + "-scroll", frames);
+                    else Console.WriteLine($"SKIP: {context}-scroll cadence; all settings fit the viewport without scrolling");
                     List<string> rows = ["phase,milliseconds,height"];
                     foreach (bool expand in new[] { true, false })
                     {
@@ -127,15 +138,20 @@ internal static class SettingsMotionPerformanceRegression
                         ticks = reveal.UpdateTicks; updates = reveal.UpdatedFrames;
                         Control group = reveal.Parent!;
                         int originalHeight = group.Height;
-                        var followingRows = content.Controls.Cast<Control>()
+                        Control section = group.Parent!;
+                        var followingRows = section.Controls.Cast<Control>()
                             .Where(c => c.Visible && c != group && c.Top >= group.Bottom)
                             .Select(c => (Control: c, Top: c.Top)).ToArray();
+                        Control? reference = page.Controls.Find("settingsReferenceColumn", true).SingleOrDefault();
+                        int referenceTop = reference?.Top ?? 0;
+                        bool stacked = reference != null && reference.Top >= section.Bottom;
                         disclosure.PerformClick();
                         for (int sample = 0; sample < 13; sample++)
                         {
                             await Task.Delay(50);
                             if (group.Height != disclosure.Height + reveal.Height || reveal.Bottom != group.ClientSize.Height ||
-                                followingRows.Any(row => row.Control.Top - row.Top != group.Height - originalHeight))
+                                followingRows.Any(row => row.Control.Top - row.Top != group.Height - originalHeight) ||
+                                reference != null && reference.Top - referenceTop != (stacked ? group.Height - originalHeight : 0))
                                 throw new InvalidOperationException("Animated reveal must keep native row bounds, following rows and hit targets aligned.");
                         }
                         reveal.SizeChanged -= changed; content.Layout -= laidOut; editor.Layout -= editorLaidOut;
@@ -148,6 +164,9 @@ internal static class SettingsMotionPerformanceRegression
                             throw new InvalidOperationException("Reveal must update its native parent height without clipping or leaving a gap.");
                     }
                     File.WriteAllLines(Path.Combine(output, context + ".csv"), rows);
+                    double frameDivisor = Stopwatch.Frequency / 1000d * Math.Max(1, page.PresentedFrames - submittedFrames);
+                    Console.WriteLine($"SUBMIT {context}: contentMs={(page.ContentPresentTicks - contentTicks) / frameDivisor:F3}, headingMs={(page.HeadingPresentTicks - headingTicks) / frameDivisor:F3}, footerMs={(page.FooterPresentTicks - footerTicks) / frameDivisor:F3}");
+                    Console.WriteLine($"CACHE END {context}: ready={cache.IsReady}, builds={cache.Builds}, hits={cache.Hits}, discarded={cache.Discarded}");
                     foreach (var entry in times.OrderByDescending(p => p.Value.Ticks).Take(8))
                         Console.WriteLine($"PAINT {context} {entry.Key}: count={entry.Value.Count}, totalMs={entry.Value.Ticks * 1000d / Stopwatch.Frequency:F2}, meanMs={entry.Value.Ticks * 1000d / Stopwatch.Frequency / entry.Value.Count:F3}");
                     foreach (string name in baseline ? Array.Empty<string>() : new[] { "headingBackdrop", "footerBackdrop" })

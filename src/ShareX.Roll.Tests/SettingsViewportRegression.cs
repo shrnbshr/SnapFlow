@@ -38,7 +38,7 @@ internal static class SettingsViewportRegression
 
     internal static async Task RunAsync(MainForm main, bool baseline)
     {
-        string output = Path.GetFullPath($"artifacts/settings-viewport/{(baseline ? "before" : "after")}/{main.DeviceDpi}");
+        string output = Path.GetFullPath($"artifacts/settings-wide-layout/{(baseline ? "before" : "after")}/{main.DeviceDpi}");
         Directory.CreateDirectory(output);
         ApplicationPreferences original = Field<ApplicationPreferences>(main, "preferences");
         Size size = main.Size;
@@ -65,13 +65,27 @@ internal static class SettingsViewportRegression
             Control bar = Find<Control>(page, "settingsScrollBar");
             Control heading = Field<Control>(page, "heading");
             Control footer = Field<Control>(page, "footer");
+            void ResizeClient(int width) => main.ClientSize = new Size(width * main.DeviceDpi / 96, 720 * main.DeviceDpi / 96);
+            async Task CheckReachable(string name, string context)
+            {
+                Control last = Find<Control>(page, name);
+                viewport.ScrollControlIntoView(last);
+                await Task.Delay(100);
+                Rectangle visible = page.RectangleToScreen(Rectangle.FromLTRB(0, heading.Bottom, page.Width, footer.Top));
+                Check(visible.Contains(last.RectangleToScreen(last.ClientRectangle)),
+                    context + ": content remains reachable above the footer and below the heading: " + name);
+            }
             foreach (AppearanceMode theme in new[] { AppearanceMode.Light, AppearanceMode.Dark })
             {
                 Find<RadioButton>(page, "theme" + theme).Checked = true;
-                foreach (string state in new[] { "minimum", "normal", "maximized", "restored", "fullscreen", "restored-fullscreen" })
+                foreach (string state in new[] { "minimum", "normal", "before-breakpoint", "at-breakpoint", "wide", "ultrawide", "restored-wide", "maximized", "restored", "fullscreen", "restored-fullscreen" })
                 {
                     if (state == "minimum") main.Size = main.MinimumSize;
-                    if (state == "normal") main.ClientSize = new Size(960 * main.DeviceDpi / 96, 720 * main.DeviceDpi / 96);
+                    if (state == "normal" || state == "restored-wide") ResizeClient(960);
+                    if (state == "before-breakpoint") ResizeClient(1239);
+                    if (state == "at-breakpoint") ResizeClient(1240);
+                    if (state == "wide") ResizeClient(1440);
+                    if (state == "ultrawide") ResizeClient(1800);
                     if (state == "maximized") main.WindowState = FormWindowState.Maximized;
                     if (state == "restored") main.WindowState = FormWindowState.Normal;
                     if (state == "fullscreen") { main.FormBorderStyle = FormBorderStyle.None; main.Bounds = Screen.FromControl(main).Bounds; }
@@ -94,20 +108,73 @@ internal static class SettingsViewportRegression
                     Console.WriteLine($"GEOMETRY {context}: dpi={main.DeviceDpi}; page={page.ClientSize}; host={host.Bounds}; trackRight={track.X}; content={content.Bounds}; contentOrigin={contentOrigin}; heading={heading.Bounds}; hscroll={viewport.HorizontalScroll.Visible}");
                     Capture(main, Path.Combine(output, context + ".png"));
                     int gap = (int)(28 * main.DeviceDpi / 96f);
-                    int capped = Math.Min(page.ClientSize.Width - gap * 2, (int)(760 * main.DeviceDpi / 96f));
+                    bool wide = page.ClientSize.Width >= (int)(1240 * main.DeviceDpi / 96f);
+                    int capped = Math.Min(page.ClientSize.Width - gap * 2, (int)((wide ? 1440 : 760) * main.DeviceDpi / 96f));
                     if (!baseline)
                     {
-                        Check(Math.Abs(page.ClientSize.Width - track.X) <= 1, context + ": scrollbar follows the page viewport right edge without an extra outer gutter");
+                        Control[] optionRows = new[] { "transparencyRow", "motionRow", "languageRow", "saveFolderHeader" }
+                            .Select(name => Find<Control>(page, name)).ToArray();
+                        Console.WriteLine("ROWS " + context + ": " + string.Join("; ", optionRows.Select(row => $"{row.Name}: {row.Bounds}, minimum={row.MinimumSize}, preferred={row.PreferredSize}")));
+                        Check(optionRows.Max(row => row.Height) - optionRows.Min(row => row.Height) <= 1,
+                            context + ": live resizing preserves the common option header height");
+                        Check(!bar.Visible || Math.Abs(page.ClientSize.Width - track.X) <= 1, context + ": visible scrollbar follows the page viewport right edge without an extra outer gutter");
                         Check(heading.Width - heading.Padding.Horizontal == capped && footer.Width - footer.Padding.Horizontal == capped &&
                             heading.Padding.Left == footer.Padding.Left &&
                             Math.Abs(heading.Left + heading.Padding.Left - (page.Width - capped) / 2) <= 1,
-                            context + ": heading and footer keep the original centered reading column");
-                        Check(heading.Left == 0 && footer.Left == 0 && heading.Right == bar.Left && footer.Right == bar.Left &&
-                            page.GetChildAtPoint(new Point(bar.Left + bar.Width / 2, heading.Height / 2)) == host,
+                            context + ": heading and footer align with the centered responsive content");
+                        int glassRight = bar.Visible ? bar.Left : page.Width;
+                        Check(heading.Left == 0 && footer.Left == 0 && heading.Right == glassRight && footer.Right == glassRight &&
+                            (!bar.Visible || page.GetChildAtPoint(new Point(bar.Left + bar.Width / 2, heading.Height / 2)) == host),
                             context + ": glass spans both viewport edges without blocking the scrollbar");
                         Check(content.Width == capped - (bar.Visible ? bar.Width : 0) &&
                             Math.Abs(contentOrigin.X - (page.Width - capped) / 2) <= 1,
-                            context + ": content keeps its reading width and alignment");
+                            context + ": content keeps its responsive width and alignment");
+                        Control general = Find<Control>(page, "settingsGeneralColumn");
+                        Control reference = Find<Control>(page, "settingsReferenceColumn");
+                        if (wide)
+                        {
+                            Check(general.Top == reference.Top && Math.Abs(general.Width - reference.Width) <= 1 &&
+                                reference.Left - general.Right == gap && reference.Right == content.ClientSize.Width,
+                                context + ": the two equal columns share a top edge and the intended gutter");
+                            Check(general.Width >= (int)(550 * main.DeviceDpi / 96f),
+                                context + ": each column retains room for native fields and shortcut recorders");
+                            foreach (string name in new[] { "aboutRepository", "aboutGitHubAccount" })
+                            {
+                                AboutLinkButton link = Find<AboutLinkButton>(page, name);
+                                Check(link.DetailAvailable >= link.DetailWidth,
+                                    context + ": project reference remains readable without ellipsis: " + name);
+                            }
+                            Control links = Find<Control>(page, "aboutLinks");
+                            Control about = Find<Control>(page, "aboutSoftware");
+                            Check(links.Width + about.Padding.Horizontal <= about.Width,
+                                context + ": all three about actions fit the reference column");
+                            foreach (ThemeOption option in Find<Control>(page, "appearanceOptions").Controls.OfType<ThemeOption>())
+                            {
+                                float scale = option.DeviceDpi / 96f;
+                                RectangleF face = ButtonElevation.CompactFaceBounds(option.ClientSize, scale);
+                                int textLeft = (int)(face.Left + (ButtonSpacing.Horizontal + 54 + 12) * scale);
+                                int textWidth = (int)(face.Right - ButtonSpacing.Horizontal * scale) - textLeft;
+                                Check(TextRenderer.MeasureText(option.Text, option.Font).Width <= textWidth,
+                                    context + ": theme caption fits beside its preview: " + option.Text);
+                            }
+                            foreach (string name in new[] { "languageSelector", "regionShortcut", "fullShortcut", "scrollShortcut" })
+                            {
+                                Control field = Find<Control>(page, name);
+                                Check(field.Parent!.ClientRectangle.Contains(field.Bounds),
+                                    context + ": input stays inside its settings row: " + name);
+                            }
+                        }
+                        else
+                        {
+                            Check(general.Left == reference.Left && general.Width == content.Width && reference.Width == content.Width &&
+                                reference.Top == general.Bottom,
+                                context + ": normal windows preserve the original single-column section order");
+                        }
+                        Check(general.Controls.Contains(Find<Control>(page, "appearanceOptions")) &&
+                            general.Controls.Contains(Find<Control>(page, "scrollingOptionsRow")) &&
+                            reference.Controls.Contains(Find<Control>(page, "shortcutList")) &&
+                            reference.Controls.Contains(Find<Control>(page, "aboutSoftware")),
+                            context + ": appearance and capture settings stay together, as do shortcuts and about");
                     }
                     Check(!viewport.HorizontalScroll.Visible && viewport.AutoScrollPosition.X == 0, context + ": no horizontal scroll or clipping");
                     Check(UiMotion.UserEnabled && Field<MotionToggle>(page, "transparency").Checked,
@@ -117,12 +184,52 @@ internal static class SettingsViewportRegression
                     Check(!viewport.HorizontalScroll.Visible, context + ": expanded settings fit the reading column");
                     viewport.AutoScrollPosition = new Point(0, viewport.DisplayRectangle.Height);
                     await Task.Delay(100);
-                    Control last = Find<Control>(page, "aboutNotice");
-                    Check(viewport.RectangleToScreen(viewport.ClientRectangle).Contains(last.RectangleToScreen(last.ClientRectangle)),
-                        context + ": bottom content stays reachable");
+                    await CheckReachable("cbAutoUpload", context);
+                    await CheckReachable("aboutNotice", context);
+                    if (state is "at-breakpoint" or "ultrawide" or "maximized")
+                    {
+                        viewport.AutoScrollPosition = Point.Empty;
+                        viewport.Invalidate(true);
+                        viewport.Update();
+                        Capture(main, Path.Combine(output, context + "-expanded.png"));
+                    }
                     Find<Button>(page, "scrollingOptionsButton").PerformClick();
                     await Task.Delay(300);
                 }
+
+                // Reflow existing controls while their disclosure is moving. A resize
+                // must not recreate native inputs, discard a draft, or toggle a setting.
+                ResizeClient(960);
+                NumericUpDown delay = Find<NumericUpDown>(page, "nudStartDelay");
+                SettingsChoice language = Find<SettingsChoice>(page, "languageSelector");
+                ShortcutRecorder shortcut = Find<ShortcutRecorder>(page, "scrollShortcut");
+                SettingsDisclosure disclosure = Find<SettingsDisclosure>(page, "scrollingOptionsButton");
+                SettingsReveal reveal = Field<SettingsReveal>(page, "scrollingReveal");
+                Control editor = Find<Control>(page, "scrollingOptionsEditor");
+                delay.Value = 1700;
+                language.SelectedIndex = 1;
+                shortcut.SetShortcut(Keys.Control | Keys.Alt | Keys.F9);
+                nint delayHandle = delay.Handle, shortcutHandle = shortcut.Handle;
+                disclosure.PerformClick();
+                await Task.Delay(45);
+                if (UiMotion.Enabled) Check(reveal.IsAnimating, theme + ": expansion retains its existing animation before reflow");
+                ResizeClient(1440);
+                await Task.Delay(350);
+                Check(disclosure.Expanded && editor.Visible && !reveal.IsAnimating && reveal.Height == editor.Height,
+                    theme + ": expansion settles fully after crossing into the wide layout");
+                disclosure.PerformClick();
+                await Task.Delay(45);
+                ResizeClient(960);
+                await Task.Delay(350);
+                Check(!disclosure.Expanded && !editor.Visible && reveal.Height == 0 && !reveal.IsAnimating,
+                    theme + ": collapse settles fully after returning to the normal layout");
+                Check(ReferenceEquals(delay, Find<NumericUpDown>(page, "nudStartDelay")) && delay.Handle == delayHandle &&
+                    ReferenceEquals(shortcut, Find<ShortcutRecorder>(page, "scrollShortcut")) && shortcut.Handle == shortcutHandle &&
+                    delay.Value == 1700 && language.SelectedIndex == 1 && shortcut.Shortcut == (Keys.Control | Keys.Alt | Keys.F9),
+                    theme + ": layout changes preserve native controls and unsaved settings");
+                Check(Find<RadioButton>(page, "theme" + theme).Checked && UiMotion.UserEnabled &&
+                    Field<MotionToggle>(page, "transparency").Checked && !viewport.HorizontalScroll.Visible,
+                    theme + ": reflow preserves theme, motion, transparency and vertical-only scrolling");
             }
         }
         finally

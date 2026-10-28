@@ -34,6 +34,7 @@ public sealed partial class MainForm : HotkeyForm
         StartPosition = FormStartPosition.CenterScreen;
         scrollOptions = LoadOptions(); // No overrides: use the released version's defaults.
         LoadPreferences();
+        Load += (_, _) => RegisterCaptureHotkeys();
 
         InitializeAppearance();
         InitializeSettingsPage();
@@ -43,7 +44,6 @@ public sealed partial class MainForm : HotkeyForm
         HotkeyPress += async (id, _, _) => await DispatchCaptureHotkeyAsync(id);
         Shown += (_, _) =>
         {
-            RegisterCaptureHotkeys();
             ActiveControl = null;
         };
         FormClosing += (_, e) =>

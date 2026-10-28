@@ -33,7 +33,6 @@ internal static class ScreenshotEditor
         try { editor = new RegionCaptureForm(RegionCaptureMode.Editor, options, canvas); }
         catch { canvas.Dispose(); throw; }
         editor.Name = "screenshotEditor";
-        editor.Font = new Font("Microsoft YaHei UI", 10);
         WindowBackdrop backdrop = new(editor, () =>
         {
             Rectangle imageBounds = Rectangle.Ceiling(editor.EditorImageBounds);
@@ -42,6 +41,18 @@ internal static class ScreenshotEditor
             return imageBounds;
         });
         bool transparency = preferences?.TransparencyEnabled ?? true;
+        void InitializeNativeAppearance()
+        {
+            if (!editor.IsHandleCreated) return;
+            NativeMethods.UseImmersiveDarkMode(editor.Handle, palette.Background.GetBrightness() < .5);
+            backdrop.Apply(palette, transparency);
+        }
+        editor.HandleCreated += (_, _) => InitializeNativeAppearance();
+        // RegionCaptureForm can create its HWND while updating input coordinates.
+        // Cover that existing handle as well as later creation/recreation, before
+        // Font/Size/Location can trigger more native work or the first visible frame.
+        InitializeNativeAppearance();
+        editor.Font = new Font("Microsoft YaHei UI", 10);
         float scale = editor.DeviceDpi / 96f;
         Rectangle workingArea = Screen.FromPoint(Cursor.Position).WorkingArea;
         editor.Size = new Size(Math.Min(workingArea.Width, (int)(1000 * scale)), Math.Min(workingArea.Height, (int)(720 * scale)));
@@ -91,11 +102,6 @@ internal static class ScreenshotEditor
             crop.Name = "editorCrop";
             LabelAction(crop, L("CropImage"));
             EditorChrome.Install(editor, toolbar, palette, transparency);
-        };
-        editor.HandleCreated += (_, _) =>
-        {
-            NativeMethods.UseImmersiveDarkMode(editor.Handle, palette.Background.GetBrightness() < .5);
-            backdrop.Apply(palette, transparency);
         };
         editor.Shown += (_, _) => backdrop.Apply(palette, transparency);
         void RefreshMaterial(object sender, UserPreferenceChangedEventArgs e)

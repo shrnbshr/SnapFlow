@@ -18,6 +18,7 @@ internal sealed class SettingsScrollHost : Panel
     private bool applying;
     private bool arranging;
     internal bool IsScrolling => motion.Enabled;
+    internal bool IsApplyingScroll => applying;
     internal long ScrollUpdateTicks { get; private set; }
     internal long MaximumScrollUpdateTicks { get; private set; }
     internal int ScrollUpdates { get; private set; }
@@ -195,7 +196,10 @@ internal sealed class SettingsScrollHost : Panel
 
     private void Arrange()
     {
-        if (arranging || bar == null) return;
+        // A minimized window has no usable viewport. Retain the measured columns
+        // and native child bounds until Windows supplies the restored client size.
+        if (arranging || bar == null || ClientSize.Width <= 0 || ClientSize.Height <= 0 ||
+            FindForm()?.WindowState == FormWindowState.Minimized) return;
         arranging = true;
         try
         {

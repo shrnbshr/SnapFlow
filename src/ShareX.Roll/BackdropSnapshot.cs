@@ -41,7 +41,7 @@ internal sealed class BackdropSnapshot
         for (int i = 0; i < colors.Length; i++) colors[i] = RemoveMatte(colors[i], CoveredMatte(matte, Coverage((uint)coverage[i])));
     }
 
-    internal static BackdropSnapshot Capture(Control page, Bitmap image, CapturePalette palette)
+    internal static BackdropSnapshot Capture(Control page, Bitmap image, CapturePalette palette, Point origin = default)
     {
         BackdropSnapshot result = new(image.Size, RemovedMatte(palette));
         int[] colors = new int[result.Pixels.Length];
@@ -95,7 +95,7 @@ internal sealed class BackdropSnapshot
             foreach (Control child in control.Controls)
                 if (child.Visible) ProtectImages(child, new Point(origin.X + child.Left, origin.Y + child.Top), area);
         }
-        ProtectImages(page, Point.Empty, new Rectangle(Point.Empty, image.Size));
+        ProtectImages(page, origin, new Rectangle(Point.Empty, image.Size));
         // Only pages with overlapping material layers supply an override; other pages keep their masks.
         if (page is IBackdropSnapshotOverlay overlay) overlay.ApplySnapshotOverlay(result);
         return result;
