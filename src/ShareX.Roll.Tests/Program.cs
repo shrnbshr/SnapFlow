@@ -68,6 +68,7 @@ internal static class Program
                 else if (args.Contains("--layout-consistency")) await LayoutConsistencyRegression.RunAsync(main);
                 else if (args.Contains("--settings-bar-glass")) await SettingsBarGlassRegression.RunAsync(main);
                 else if (args.Contains("--settings-viewport")) await SettingsViewportRegression.RunAsync(main, args.Contains("--baseline"));
+                else if (args.Contains("--taskbar-restore")) await TaskbarRestoreRegression.RunAsync(main);
                 else if (args.Contains("--settings-restore")) await SettingsRestoreRegression.RunAsync(main, args.Contains("--baseline"));
                 else if (args.Contains("--save-folder-presentation")) await SaveFolderPresentationRegression.RunAsync(main, args.Contains("--baseline"));
                 else if (args.Contains("--save-location-visual")) await SaveLocationRegression.RunVisualAsync(main, args.Contains("--baseline"));

@@ -566,3 +566,11 @@
 - 同机 192 DPI、缓存就绪后，浅／深色最大化滚动处理均值为 11.69／11.45 ms，上一版为 11.18／10.14 ms；普通窗口为 9.20／7.75 ms。测量的是 UI 处理成本，不代表显示帧率保证。
 - 已查看浅／深色实际屏幕截图，记录及发布核对位于 artifacts/settings-gradient/。版本保持 V2.1.0，程序、便携／源码包和安装包同步更新；保留本地个人设置，分发包排除个人设置。Release 构建 0 错误，保留既有 NU1900 网络警告。
 
+## v2.1.1 任务栏无法恢复窗口修复（2026-10-29）
+
+- 使用原生 WM_SYSCOMMAND / SC_MINIMIZE 复现：WM_WINDOWPOSCHANGING 的 flags 为 0x8170，带 SWP_SHOWWINDOW；对应 WM_WINDOWPOSCHANGED 为 0x8130，不再带该标志。原先在前者设置 DWM cloak、仅在后者仍带显示标志时解除，导致最小化窗口持续处于应用隐藏状态。新增回归在修改前明确失败于“minimized window is not left application-cloaked”，记录见 artifacts/taskbar-restore/baseline-96.log。
+- WindowBackdrop 现在仅对原生可见状态为隐藏的窗口启用首次绘制遮蔽；后续位置变更完成消息只要存在本次遮蔽就执行解除，不再依赖显示标志保留。窗口句柄销毁时同时重置遮蔽状态。保留原有首次显示同步绘制、透明背景及截图返回流程。
+- 新增 --taskbar-restore 回归，使用原生最小化／还原命令，覆盖深浅色、透明开关、主页／设置页、普通／最大化共 16 种组合，各重复两次。96／192 DPI 各 288 条断言通过，并检查隐藏／再次显示后的遮蔽释放。原有设置恢复各 48 条、首次绘制及截图／编辑器返回各 93 条通过，合计 858 条断言。
+- 在实际桌面另启动隔离副本，物理点击标题栏最小化和 Windows 任务栏图标：主页恢复为正常窗口，最大化设置页恢复为最大化且布局完整；已查看实际截图，关于区显示 Version 2.1.1。测试副本未使用分发目录的个人设置，结束后正常关闭。桌面操作记录位于 artifacts/taskbar-restore/desktop-normal.txt 和 desktop-maximized.txt。
+- 产品版本为 2.1.1，文件版本为 2.1.1.0；Release 测试构建 0 错误，4 条既有 NU1900 警告来自无法访问 NuGet 漏洞元数据。更新前程序备份与个人设置 SHA256 位于 artifacts/taskbar-restore/before-release/；最终构建、发布及核对资料同置于 artifacts/taskbar-restore/。
+

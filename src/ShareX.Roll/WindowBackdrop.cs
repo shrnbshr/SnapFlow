@@ -220,6 +220,7 @@ internal sealed class WindowBackdrop : IDisposable
         private void PixelsInvalidated(object? sender, InvalidateEventArgs e) => pixelsDirty = true;
         private void HandleDestroyed(object? sender, EventArgs e)
         {
+            cloakedForShow = false;
             ReleaseHandle();
             ReleaseSurface();
             if (control == owner.form) { owner.IsActive = false; owner.applied = owner.extended = false; }
@@ -228,15 +229,18 @@ internal sealed class WindowBackdrop : IDisposable
         protected override void WndProc(ref Message message)
         {
             if (control == owner.form && message.Msg == 0x46 &&
-                (Marshal.PtrToStructure<WindowPosition>(message.LParam).Flags & 0x40) != 0) // SWP_SHOWWINDOW.
+                (Marshal.PtrToStructure<WindowPosition>(message.LParam).Flags & 0x40) != 0 &&
+                !NativeMethods.IsWindowVisible(Handle)) // SWP_SHOWWINDOW on a genuinely hidden window.
             {
                 // DWM keeps composing a cloaked window, so its initial client and child
                 // surfaces can finish without exposing their unpainted pixels on screen.
+                // Minimize can also carry SWP_SHOWWINDOW, then lose it in WM_WINDOWPOSCHANGED.
+                // Cloaking an already visible window here would hide it from the Shell indefinitely.
                 int cloak = 1;
                 cloakedForShow = NativeMethods.DwmSetWindowAttribute(Handle, 13, ref cloak, sizeof(int)) >= 0;
             }
             if (control == owner.form && message.Msg == 0x47 &&
-                (Marshal.PtrToStructure<WindowPosition>(message.LParam).Flags & 0x40) != 0)
+                (cloakedForShow || (Marshal.PtrToStructure<WindowPosition>(message.LParam).Flags & 0x40) != 0))
             {
                 try
                 {
