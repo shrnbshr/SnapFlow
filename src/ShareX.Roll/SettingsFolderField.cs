@@ -27,7 +27,7 @@ internal sealed class SettingsFolderField : Control
         text.HandleCreated += (_, _) => UpdatePath();
         text.VisibleChanged += (_, _) => { if (text.Visible) UpdatePath(); };
         text.GotFocus += (_, _) => focus.AnimateTo(1, 100);
-        text.LostFocus += (_, _) => focus.AnimateTo(0, 100);
+        text.LostFocus += (_, _) => focus.SnapTo(0);
         Controls.Add(text);
         UpdatePath();
     }

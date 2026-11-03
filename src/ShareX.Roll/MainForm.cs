@@ -87,7 +87,7 @@ public sealed partial class MainForm : HotkeyForm
             }
 
             Bitmap? bitmap = null;
-            if (kind is "region" or "window") bitmap = RegionCaptureTasks.GetRegionImage();
+            if (kind is "region" or "window") bitmap = RegionCaptureTasks.GetRegionImage(new RegionCaptureOptions { EnableAnimations = UiMotion.Enabled });
             else bitmap = new Screenshot().CaptureFullscreen();
             if (bitmap != null) SetPreview(bitmap);
         }
@@ -106,6 +106,7 @@ public sealed partial class MainForm : HotkeyForm
     {
         // Subscribe before Show/Load opens the modal selector, so a fast cancel/close cannot be missed.
         scrollForm = form;
+        form.SelectionAnimationsEnabled = () => UiMotion.Enabled;
         string originalTitle = L("ScrollTitle");
         form.Text = originalTitle;
         form.Activated += (_, _) =>

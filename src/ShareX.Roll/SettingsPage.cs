@@ -487,6 +487,9 @@ internal sealed class SettingsPage : UserControl, IBackdropSnapshotOverlay, IBac
         if (initializing || arrangingOverlay || heading == null || footer == null || ClientSize.Width <= 0 || ClientSize.Height <= 0 || FindForm()?.WindowState == FormWindowState.Minimized) return;
         float scale = DeviceDpi / 96f;
         int gap = (int)(28 * scale);
+        int barOuterInset = (int)Math.Round(20 * scale);
+        // Keep fixed captions outside the 32px clear-to-glass edge, with 8px breathing room.
+        int barInnerInset = (int)Math.Ceiling(40 * scale);
         int width = Math.Max(1, ClientSize.Width);
         bool wide = width >= (int)(1240 * scale);
         int readingWidth = Math.Max(1, Math.Min(width - gap * 2, (int)((wide ? 1440 : 760) * scale)));
@@ -511,10 +514,10 @@ internal sealed class SettingsPage : UserControl, IBackdropSnapshotOverlay, IBac
             Control? track = scrollHost.Controls["settingsScrollBar"];
             int barWidth = Math.Max(1, width - (track is { Visible: true } ? track.Width : 0));
             int barRight = Math.Max(0, barWidth - left - readingWidth);
-            heading.Padding = new Padding(left, gap, barRight, 0);
+            heading.Padding = new Padding(left, barOuterInset, barRight, barInnerInset);
             heading.MaximumSize = new Size(barWidth, 0);
             heading.MinimumSize = new Size(barWidth, (int)(76 * scale) + gap);
-            footer.Padding = new Padding(left, 0, barRight, gap);
+            footer.Padding = new Padding(left, barInnerInset, barRight, barOuterInset);
             footer.MaximumSize = new Size(barWidth, 0);
             footer.MinimumSize = new Size(barWidth, 0);
             int headerHeight = heading.GetPreferredSize(new Size(barWidth, 0)).Height;
@@ -623,7 +626,8 @@ internal sealed class SettingsPage : UserControl, IBackdropSnapshotOverlay, IBac
     private void ToggleScrolling(SettingsDisclosure header)
     {
         header.Expanded = !header.Expanded;
-        scrollingReveal.SetExpanded(header.Expanded);
+        scrollingReveal.SetExpanded(header.Expanded, animate: !header.KeyboardActivation);
+        if (header.KeyboardActivation) scrollHost.FinishGeometry();
         header.NotifyExpanded();
     }
 

@@ -54,7 +54,12 @@ internal static class Program
             SettingsOpenLatencyRegression.StartupMilliseconds = startup.Elapsed.TotalMilliseconds;
             try
             {
-                if (args.Contains("--editor-initialization")) EditorOpeningFramesRegression.VerifyInitialization(args.Contains("--baseline"));
+                if (args.Contains("--capture-motion-policy")) await CaptureMotionPolicyRegression.RunAsync(main);
+                else if (args.Contains("--preview-keyboard-motion")) await PreviewKeyboardMotionRegression.RunAsync(main);
+                else if (args.Contains("--preview-toolbar-performance")) await PreviewToolbarPerformanceRegression.RunAsync(main);
+                else if (args.Contains("--preview-command-work")) await PreviewCommandWorkRegression.RunAsync(main);
+                else if (args.Contains("--settings-keyboard-motion")) await SettingsKeyboardMotionRegression.RunAsync(main);
+                else if (args.Contains("--editor-initialization")) EditorOpeningFramesRegression.VerifyInitialization(args.Contains("--baseline"));
                 else if (args.Contains("--editor-opening-frames")) await EditorOpeningFramesRegression.RunAsync(main, args.Contains("--baseline"), args.Contains("--pointer-opening"));
                 else if (args.Contains("--opening-presentation")) await OpeningPresentationRegression.RunAsync(main, args.Contains("--baseline"));
                 else if (args.Contains("--startup-painting")) await StartupPaintingRegression.RunAsync(main, args.Contains("--baseline"));

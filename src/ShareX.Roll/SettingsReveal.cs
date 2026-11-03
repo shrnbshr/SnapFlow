@@ -40,7 +40,7 @@ internal sealed class SettingsReveal : Panel
         editor.Hide();
     }
 
-    internal void SetExpanded(bool value)
+    internal void SetExpanded(bool value, bool animate = true)
     {
         expanded = value;
         if (value)
@@ -48,7 +48,8 @@ internal sealed class SettingsReveal : Panel
             editor.Show();
             ArrangeEditor();
         }
-        reveal.SpringTo(value ? 1 : 0, 220);
+        if (animate) reveal.SpringTo(value ? 1 : 0, 220);
+        else reveal.SnapTo(value ? 1 : 0);
         if (!reveal.IsRunning && !value) editor.Hide();
     }
 

@@ -121,10 +121,16 @@ internal sealed class SettingsDisclosure : Button
     internal CapturePalette Palette { get; set; } = CapturePalette.Light;
     private bool expanded;
     private readonly UiTween rotation;
+    internal bool KeyboardActivation { get; private set; }
     internal bool Expanded
     {
         get => expanded;
-        set { expanded = value; rotation.SpringTo(value ? 1 : 0, 180); }
+        set
+        {
+            expanded = value;
+            if (KeyboardActivation) rotation.SnapTo(value ? 1 : 0);
+            else rotation.SpringTo(value ? 1 : 0, 180);
+        }
     }
     private readonly UiTween hover;
     private readonly ButtonElevation elevation = new();
@@ -137,6 +143,32 @@ internal sealed class SettingsDisclosure : Button
         rotation = new(this, Invalidate);
         hover = new(this, Invalidate);
         Disposed += (_, _) => elevation.Dispose();
+    }
+
+    protected override void WndProc(ref Message message)
+    {
+        // Native Space activation raises Click while processing its key message.
+        bool previous = KeyboardActivation;
+        KeyboardActivation |= message.Msg is 0x0100 or 0x0101 or 0x0102;
+        try { base.WndProc(ref message); }
+        finally { KeyboardActivation = previous; }
+    }
+
+    protected override bool ProcessDialogKey(Keys keyData)
+    {
+        // Enter can activate the focused/default button through the containing form.
+        bool previous = KeyboardActivation;
+        KeyboardActivation = true;
+        try { return base.ProcessDialogKey(keyData); }
+        finally { KeyboardActivation = previous; }
+    }
+
+    protected override bool ProcessMnemonic(char charCode)
+    {
+        bool previous = KeyboardActivation;
+        KeyboardActivation = true;
+        try { return base.ProcessMnemonic(charCode); }
+        finally { KeyboardActivation = previous; }
     }
 
     protected override void OnMouseEnter(EventArgs e) { base.OnMouseEnter(e); hover.SpringTo(1, ButtonElevation.ResponseMilliseconds); }
@@ -162,7 +194,7 @@ internal sealed class SettingsDisclosure : Button
         }
         TextRenderer.DrawText(g, Text, Font, new Rectangle((int)(SettingsLayout.Inset * s), 0, Math.Max(0, Width - (int)(2 * SettingsLayout.Inset * s)), Height), Palette.Text,
             TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | UiLanguage.TextDirection);
-        float x = Width - (SettingsLayout.Inset + 4) * s, y = Height / 2f;
+        float x = face.Right - 15 * s, y = Height / 2f;
         using Pen chevron = new(Palette.Secondary, 1.7f * s) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
         g.TranslateTransform(x, y);
         g.RotateTransform(-180 * rotation.Value);

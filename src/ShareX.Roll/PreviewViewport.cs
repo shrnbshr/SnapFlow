@@ -172,7 +172,7 @@ internal sealed partial class PreviewCanvas
         if (zoomBarFade?.Visible == true) zoomBarFade.Update();
     }
 
-    internal void ZoomBy(double steps, PointF anchor)
+    internal void ZoomBy(double steps, PointF anchor, bool animate = true)
     {
         SynchronizeImage();
         if (Image == null || steps == 0) return;
@@ -188,11 +188,11 @@ internal sealed partial class PreviewCanvas
         zoom.Target = Math.Clamp(zoom.Target * Math.Pow(1.2, Math.Clamp(steps, -12, 12)), MinimumScale, MaximumScale);
         offsetX.Target = anchor.X - sourceX * zoom.Target;
         offsetY.Target = anchor.Y - sourceY * zoom.Target;
-        StartViewportMotion();
-        ApplyViewportLanguage();
+        StartViewportMotion(animate);
+        AccessibleDescription = L("PreviewZoomHelp");
     }
 
-    internal void FitImage()
+    internal void FitImage(bool animate = true)
     {
         SynchronizeImage();
         if (Image == null) return;
@@ -201,11 +201,11 @@ internal sealed partial class PreviewCanvas
         zoom.Target = FitScale;
         offsetX.Target = (Width - Image.Width * zoom.Target) / 2;
         offsetY.Target = (Height - Image.Height * zoom.Target) / 2;
-        StartViewportMotion();
-        ApplyViewportLanguage();
+        StartViewportMotion(animate);
+        AccessibleDescription = L("PreviewZoomHelp");
     }
 
-    internal void FitImageWidth()
+    internal void FitImageWidth(bool animate = true)
     {
         SynchronizeImage();
         if (Image == null) return;
@@ -214,16 +214,16 @@ internal sealed partial class PreviewCanvas
         zoom.Target = ViewWidth / Image.Width;
         offsetX.Target = 0;
         offsetY.Target = 0; // Enter reading at the top, as with opening a document.
-        StartViewportMotion();
-        ApplyViewportLanguage();
+        StartViewportMotion(animate);
+        AccessibleDescription = L("PreviewReadingHelp");
     }
 
-    internal void ScrollPreview(double pixels)
+    internal void ScrollPreview(double pixels, bool animate = true)
     {
         if (Image == null) return;
         EndReveal();
         offsetY.Target -= pixels;
-        StartViewportMotion();
+        StartViewportMotion(animate);
     }
 
     private void ClampTargets()
@@ -236,9 +236,12 @@ internal sealed partial class PreviewCanvas
     private static double ClampOffset(double offset, double content, double viewport, double trailing) =>
         content <= viewport ? (viewport - content) / 2 : Math.Clamp(offset, viewport - content - trailing, 0);
 
-    private void StartViewportMotion()
+    private void StartViewportMotion(bool animate = true)
     {
         ClampTargets();
+        // Keyboard commands commit their destination in this input event, including when
+        // taking over an active pointer spring. Pointer calls keep continuous motion.
+        if (!animate) { StopViewportMotion(); return; }
         UpdateViewportControls();
         if (!UiMotion.Enabled || !Visible || !IsHandleCreated) { StopViewportMotion(); return; }
         // Re-target from current position AND velocity, so rapid direction changes never restart a tween.
@@ -415,18 +418,18 @@ internal sealed partial class PreviewCanvas
             Point center = new(Width / 2, Height / 2);
             switch (e.KeyCode)
             {
-                case Keys.Add: case Keys.Oemplus: ZoomBy(1, center); break;
-                case Keys.Subtract: case Keys.OemMinus: ZoomBy(-1, center); break;
-                case Keys.D0: case Keys.NumPad0: FitImage(); break;
-                case Keys.W: FitImageWidth(); break;
-                case Keys.Up: ScrollPreview(-D(44)); break;
-                case Keys.Down: ScrollPreview(D(44)); break;
-                case Keys.PageUp: ScrollPreview(-Height * .9); break;
-                case Keys.PageDown: case Keys.Space: ScrollPreview(Height * .9); break;
-                case Keys.Home: offsetY.Target = 0; StartViewportMotion(); break;
-                case Keys.End: ScrollPreview(double.MaxValue); break;
-                case Keys.Left: offsetX.Target += D(44); StartViewportMotion(); break;
-                case Keys.Right: offsetX.Target -= D(44); StartViewportMotion(); break;
+                case Keys.Add: case Keys.Oemplus: ZoomBy(1, center, animate: false); break;
+                case Keys.Subtract: case Keys.OemMinus: ZoomBy(-1, center, animate: false); break;
+                case Keys.D0: case Keys.NumPad0: FitImage(animate: false); break;
+                case Keys.W: FitImageWidth(animate: false); break;
+                case Keys.Up: ScrollPreview(-D(44), animate: false); break;
+                case Keys.Down: ScrollPreview(D(44), animate: false); break;
+                case Keys.PageUp: ScrollPreview(-Height * .9, animate: false); break;
+                case Keys.PageDown: case Keys.Space: ScrollPreview(Height * .9, animate: false); break;
+                case Keys.Home: offsetY.Target = 0; StartViewportMotion(animate: false); break;
+                case Keys.End: ScrollPreview(double.MaxValue, animate: false); break;
+                case Keys.Left: offsetX.Target += D(44); StartViewportMotion(animate: false); break;
+                case Keys.Right: offsetX.Target -= D(44); StartViewportMotion(animate: false); break;
                 default: base.OnKeyDown(e); return;
             }
             e.Handled = e.SuppressKeyPress = true;
@@ -554,17 +557,16 @@ internal sealed class PreviewZoomBar : Panel
         foreach (Button button in Controls) palette.StyleButton(button);
         CapturePalette fitPalette = reading ? palette with { Accent = palette.Tint, AccentText = palette.Text } : palette;
         fitPalette.StyleButton(width, reading);
+        // The shared button styler uses visible glyphs as names; restore this toolbar's
+        // localized meanings without repeating tooltip registration or layout.
+        UpdateAccessibleNames();
         InvalidateBackdrop();
     }
 
     internal void ApplyLanguage()
     {
-        AccessibleName = L("PreviewZoomControls");
-        minus.AccessibleName = L("PreviewZoomOut"); plus.AccessibleName = L("PreviewZoomIn");
-        percent.AccessibleName = L("PreviewZoomScale") + " " + scaleText;
         percent.AccessibleDescription = L("PreviewFitImage");
         width.Text = L(reading ? "PreviewFitImage" : "PreviewFitWidth");
-        width.AccessibleName = width.Text;
         tips.SetToolTip(minus, L("PreviewZoomOut") + " (−)");
         tips.SetToolTip(plus, L("PreviewZoomIn") + " (+)");
         tips.SetToolTip(percent, L("PreviewFitImage") + " (0)");
@@ -572,6 +574,16 @@ internal sealed class PreviewZoomBar : Panel
         tips.SetToolTip(this, L(reading ? "PreviewReadingHelp" : "PreviewZoomHelp"));
         UiLanguage.ApplyTextDirection(this);
         Arrange();
+        UpdateAccessibleNames();
+    }
+
+    private void UpdateAccessibleNames()
+    {
+        AccessibleName = L("PreviewZoomControls");
+        minus.AccessibleName = L("PreviewZoomOut");
+        plus.AccessibleName = L("PreviewZoomIn");
+        percent.AccessibleName = L("PreviewZoomScale") + " " + scaleText;
+        width.AccessibleName = width.Text;
     }
 
     internal void UpdateValues(double factor, bool canShrink, bool canGrow, bool isReading)

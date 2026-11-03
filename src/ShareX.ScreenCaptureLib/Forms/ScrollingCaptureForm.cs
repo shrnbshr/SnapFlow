@@ -45,6 +45,8 @@ namespace ShareX.ScreenCaptureLib
         public event Action<Bitmap> CaptureCompleted;
         public event Action SelectionCancelled;
         public Action<ScrollingCaptureOptions> OptionsRequested { get; set; }
+        // Evaluate at each selection, so host/system motion changes also affect a retry.
+        public Func<bool> SelectionAnimationsEnabled { get; set; }
 
         public ScrollingCaptureOptions Options { get; private set; }
         public bool NoScrollDetected => !manager.IsCapturing && manager.Result != null && !manager.HasContentChanged;
@@ -201,7 +203,7 @@ namespace ShareX.ScreenCaptureLib
             {
                 WindowState = FormWindowState.Minimized;
                 Thread.Sleep(250);
-                if (await manager.SelectWindowAsync()) await StartCapture();
+                if (await manager.SelectWindowAsync(SelectionAnimationsEnabled?.Invoke() ?? true)) await StartCapture();
                 else if (SelectionCancelled != null) SelectionCancelled.Invoke();
                 else this.ForceActivate();
             }

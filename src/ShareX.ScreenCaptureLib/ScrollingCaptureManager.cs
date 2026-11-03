@@ -209,9 +209,10 @@ namespace ShareX.ScreenCaptureLib
             }
         }
 
-        public async Task<bool> SelectWindowAsync()
+        public async Task<bool> SelectWindowAsync(bool enableAnimations = true)
         {
-            bool selected = RegionCaptureTasks.GetRectangleRegion(out selectedRectangle, out selectedWindow, new RegionCaptureOptions());
+            bool selected = RegionCaptureTasks.GetRectangleRegion(out selectedRectangle, out selectedWindow,
+                new RegionCaptureOptions { EnableAnimations = enableAnimations });
             if (selected)
             {
                 Point cursor = System.Windows.Forms.Cursor.Position;

@@ -181,6 +181,8 @@ internal sealed class SettingsScrollHost : Panel
         bar.Invalidate();
     }
 
+    internal void FinishGeometry() => bar.FinishGeometry();
+
     protected override void OnLayout(LayoutEventArgs e)
     {
         base.OnLayout(e);
