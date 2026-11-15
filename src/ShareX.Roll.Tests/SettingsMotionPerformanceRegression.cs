@@ -83,16 +83,13 @@ internal static class SettingsMotionPerformanceRegression
                 Find<Button>(page, "saveSettingsButton").Focus();
                 viewport.AutoScrollPosition = Point.Empty;
                 await Task.Delay(200);
-                SettingsScrollBackdropCache cache = Field<SettingsScrollBackdropCache>(page, "scrollBackdrop");
-                for (int wait = 0; wait < 80 && !cache.IsReady; wait++) await Task.Delay(25);
-                Console.WriteLine($"CACHE {theme}-{maximized}: ready={cache.IsReady}, builds={cache.Builds}, hits={cache.Hits}");
                 if (!UiMotion.Enabled) throw new InvalidOperationException("Real animation measurements require enabled Windows and app animations");
                 Dictionary<string, (long Ticks, int Count)> times = new();
                 Probe[] probes = Descendants(page).Select(c => new Probe(c, times)).ToArray();
                 string context = theme + (maximized ? "-max" : "-normal");
                 try
                 {
-                    long contentTicks = page.ContentPresentTicks, headingTicks = page.HeadingPresentTicks, footerTicks = page.FooterPresentTicks;
+                    long contentTicks = page.ContentPresentTicks;
                     int submittedFrames = page.PresentedFrames;
                     int updates = host.ScrollUpdates;
                     long ticks = host.ScrollUpdateTicks;
@@ -116,7 +113,6 @@ internal static class SettingsMotionPerformanceRegression
                         bar.Paint -= painted;
                     }
                     int count = host.ScrollUpdates - updates;
-                    Console.WriteLine($"CACHE SCROLL {context}: ready={cache.IsReady}, builds={cache.Builds}, hits={cache.Hits}, last={cache.LastChange}");
                     Console.WriteLine($"COST {context}-scroll: updates={count}, meanSubmitMs={(host.ScrollUpdateTicks - ticks) * 1000d / Stopwatch.Frequency / Math.Max(1, count):F3}");
                     if (scrollable) Cadence(context + "-scroll", frames);
                     else Console.WriteLine($"SKIP: {context}-scroll cadence; all settings fit the viewport without scrolling");
@@ -165,17 +161,9 @@ internal static class SettingsMotionPerformanceRegression
                     }
                     File.WriteAllLines(Path.Combine(output, context + ".csv"), rows);
                     double frameDivisor = Stopwatch.Frequency / 1000d * Math.Max(1, page.PresentedFrames - submittedFrames);
-                    Console.WriteLine($"SUBMIT {context}: contentMs={(page.ContentPresentTicks - contentTicks) / frameDivisor:F3}, headingMs={(page.HeadingPresentTicks - headingTicks) / frameDivisor:F3}, footerMs={(page.FooterPresentTicks - footerTicks) / frameDivisor:F3}");
-                    Console.WriteLine($"CACHE END {context}: ready={cache.IsReady}, builds={cache.Builds}, hits={cache.Hits}, discarded={cache.Discarded}");
+                    Console.WriteLine($"SUBMIT {context}: contentMs={(page.ContentPresentTicks - contentTicks) / frameDivisor:F3}");
                     foreach (var entry in times.OrderByDescending(p => p.Value.Ticks).Take(8))
                         Console.WriteLine($"PAINT {context} {entry.Key}: count={entry.Value.Count}, totalMs={entry.Value.Ticks * 1000d / Stopwatch.Frequency:F2}, meanMs={entry.Value.Ticks * 1000d / Stopwatch.Frequency / entry.Value.Count:F3}");
-                    foreach (string name in baseline ? Array.Empty<string>() : new[] { "headingBackdrop", "footerBackdrop" })
-                    {
-                        SettingsBarBackdrop backdrop = Field<SettingsBarBackdrop>(page, name);
-                        int builds = Field<int>(backdrop, "Builds");
-                        double divisor = Stopwatch.Frequency / 1000d * Math.Max(1, builds);
-                        Console.WriteLine($"MATERIAL {context}-{name}: builds={builds}, reuses={Field<int>(backdrop, "Reuses")}, captureMs={Field<long>(backdrop, "CaptureTicks") / divisor:F3}, filterMs={Field<long>(backdrop, "FilterTicks") / divisor:F3}, upscaleMs={Field<long>(backdrop, "UpscaleTicks") / divisor:F3}, alphaMs={Field<long>(backdrop, "AlphaTicks") / divisor:F3}");
-                    }
                 }
                 finally { foreach (Probe probe in probes) probe.Dispose(); }
             }

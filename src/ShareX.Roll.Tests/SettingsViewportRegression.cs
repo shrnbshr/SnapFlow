@@ -71,9 +71,9 @@ internal static class SettingsViewportRegression
                 Control last = Find<Control>(page, name);
                 viewport.ScrollControlIntoView(last);
                 await Task.Delay(100);
-                Rectangle visible = page.RectangleToScreen(Rectangle.FromLTRB(0, heading.Bottom, page.Width, footer.Top));
+                Rectangle visible = viewport.RectangleToScreen(viewport.ClientRectangle);
                 Check(visible.Contains(last.RectangleToScreen(last.ClientRectangle)),
-                    context + ": content remains reachable above the footer and below the heading: " + name);
+                    context + ": content remains reachable in the scroll viewport: " + name);
             }
             foreach (AppearanceMode theme in new[] { AppearanceMode.Light, AppearanceMode.Dark })
             {
@@ -118,14 +118,12 @@ internal static class SettingsViewportRegression
                         Check(optionRows.Max(row => row.Height) - optionRows.Min(row => row.Height) <= 1,
                             context + ": live resizing preserves the common option header height");
                         Check(!bar.Visible || Math.Abs(page.ClientSize.Width - track.X) <= 1, context + ": visible scrollbar follows the page viewport right edge without an extra outer gutter");
-                        Check(heading.Width - heading.Padding.Horizontal == capped && footer.Width - footer.Padding.Horizontal == capped &&
-                            heading.Padding.Left == footer.Padding.Left &&
-                            Math.Abs(heading.Left + heading.Padding.Left - (page.Width - capped) / 2) <= 1,
+                        Check(heading.Width == content.Width && footer.Width == content.Width &&
+                            heading.Left == content.Left && footer.Left == content.Left,
                             context + ": heading and footer align with the centered responsive content");
-                        int glassRight = bar.Visible ? bar.Left : page.Width;
-                        Check(heading.Left == 0 && footer.Left == 0 && heading.Right == glassRight && footer.Right == glassRight &&
-                            (!bar.Visible || page.GetChildAtPoint(new Point(bar.Left + bar.Width / 2, heading.Height / 2)) == host),
-                            context + ": glass spans both viewport edges without blocking the scrollbar");
+                        Check(heading.Parent == content.Parent && footer.Parent == content.Parent &&
+                            heading.Bottom <= content.Top && footer.Top >= content.Bottom,
+                            context + ": the heading and footer occupy their own rows in the scroll canvas");
                         Check(content.Width == capped - (bar.Visible ? bar.Width : 0) &&
                             Math.Abs(contentOrigin.X - (page.Width - capped) / 2) <= 1,
                             context + ": content keeps its responsive width and alignment");

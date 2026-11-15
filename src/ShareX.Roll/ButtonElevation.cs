@@ -53,7 +53,21 @@ internal sealed class ButtonElevation : IDisposable
 
     internal void PaintShadow(Graphics graphics, Size size, float scale, bool dark, float amount, bool compact = false, bool unified = false)
     {
-        if (amount <= 0 || SystemInformation.HighContrast || size.Width <= 0 || size.Height <= 0) return;
+        if (amount <= 0 || !PrepareShadow(size, scale, compact, unified)) return;
+        void Layer(Bitmap texture, float strength)
+        {
+            opacity ??= new ImageAttributes();
+            opacityMatrix.Matrix33 = amount * strength;
+            opacity.SetColorMatrix(opacityMatrix);
+            graphics.DrawImage(texture, new Rectangle(Point.Empty, size), 0, 0, size.Width, size.Height, GraphicsUnit.Pixel, opacity);
+        }
+        Layer(ambient!, dark ? .48f : .14f);
+        Layer(contact!, dark ? .14f : .045f);
+    }
+
+    internal bool PrepareShadow(Size size, float scale, bool compact = false, bool unified = false)
+    {
+        if (SystemInformation.HighContrast || size.Width <= 0 || size.Height <= 0) return false;
         RectangleF face = compact ? CompactFaceBounds(size, scale) : FaceBounds(size, scale);
         float cornerRadius = compact ? CompactRadius(face, scale) : Radius(face, scale);
         // Non-editor controls share one logical blur scale, including compact cards.
@@ -73,15 +87,7 @@ internal sealed class ButtonElevation : IDisposable
             shadowRadius = cornerRadius;
             shadowUnified = unified;
         }
-        void Layer(Bitmap texture, float strength)
-        {
-            opacity ??= new ImageAttributes();
-            opacityMatrix.Matrix33 = amount * strength;
-            opacity.SetColorMatrix(opacityMatrix);
-            graphics.DrawImage(texture, new Rectangle(Point.Empty, size), 0, 0, size.Width, size.Height, GraphicsUnit.Pixel, opacity);
-        }
-        Layer(ambient!, dark ? .48f : .14f);
-        Layer(contact!, dark ? .14f : .045f);
+        return true;
     }
 
     internal static Bitmap CreateShadow(Size size, float scale, float softness, float offset, RectangleF face, float cornerRadius, float verticalSoftness, bool directional)

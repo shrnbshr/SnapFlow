@@ -88,7 +88,7 @@ internal static class SettingsScrollPresentationRegression
             await Task.Delay(400);
             SettingsPage page = Find<SettingsPage>(main, "SettingsPage");
             Panel viewport = Field<Panel>(page, "scroller");
-            Control content = Field<Control>(page, "content"), heading = Field<Control>(page, "heading"), footer = Field<Control>(page, "footer");
+            Control content = Field<Control>(page, "content");
             Control bar = Find<Control>(page, "settingsScrollBar");
             foreach (AppearanceMode mode in new[] { AppearanceMode.Light, AppearanceMode.Dark })
             {
@@ -97,13 +97,13 @@ internal static class SettingsScrollPresentationRegression
                 viewport.AutoScrollPosition = Point.Empty;
                 await Task.Delay(300);
                 Point top = new(content.PointToScreen(new Point(22 * main.DeviceDpi / 96, 0)).X,
-                    page.PointToScreen(new Point(0, heading.Bottom + 12)).Y);
+                    viewport.PointToScreen(new Point(0, 12)).Y);
                 Point bottom = new(content.PointToScreen(new Point(142 * main.DeviceDpi / 96, 0)).X,
-                    page.PointToScreen(new Point(0, footer.Top - 12)).Y);
+                    viewport.PointToScreen(new Point(0, viewport.ClientSize.Height - 12)).Y);
                 LogicalToPhysicalPointForPerMonitorDPI(page.Handle, ref top);
                 LogicalToPhysicalPointForPerMonitorDPI(page.Handle, ref bottom);
                 Rectangle area = Rectangle.FromLTRB(top.X, top.Y, bottom.X, bottom.Y);
-                double physicalScale = area.Height / (double)(footer.Top - heading.Bottom - 24);
+                double physicalScale = area.Height / (double)(viewport.ClientSize.Height - 24);
                 int travel = Math.Min(160 * main.DeviceDpi / 96, (int)(area.Height / physicalScale / 3));
                 // Absolute mouse coordinates round to physical pixels; allow thumb quantization.
                 int maximum = (int)Math.Ceiling((travel + 12) * physicalScale);

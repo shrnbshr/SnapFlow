@@ -144,9 +144,11 @@ internal static class SettingsRegression
                 ShortcutRecorder recorder = Find<ShortcutRecorder>(page, "regionShortcut");
                 Check(recorder.Height >= 52 * page.DeviceDpi / 96 && recorder.Height <= 56 * page.DeviceDpi / 96,
                     "shortcut controls preserve compact vertical padding at current DPI");
-                Check(Find<Button>(page, "saveSettingsButton").RectangleToScreen(Find<Button>(page, "saveSettingsButton").ClientRectangle).Bottom
+                Button saveButton = Find<Button>(page, "saveSettingsButton");
+                Field<Panel>(page, "scroller").ScrollControlIntoView(saveButton);
+                Check(saveButton.RectangleToScreen(saveButton.ClientRectangle).Bottom
                     <= page.RectangleToScreen(page.ClientRectangle).Bottom,
-                    "fixed save / cancel footer stays within the main window");
+                    "the save button is reachable in the scroll viewport");
                 // Exercise recorder through native command handling, including cancellation and validation.
                 Keys before = recorder.Shortcut;
                 recorder.PerformClick();
@@ -201,9 +203,11 @@ internal static class SettingsRegression
             await Task.Delay(80);
             Check(scroller.RectangleToScreen(scroller.ClientRectangle).Contains(last.RectangleToScreen(last.ClientRectangle)),
                 "last shortcut is reachable by scrolling at minimum window size");
-            Check(Find<Button>(compactPage, "saveSettingsButton").RectangleToScreen(Find<Button>(compactPage, "saveSettingsButton").ClientRectangle).Bottom
+            Button compactSave = Find<Button>(compactPage, "saveSettingsButton");
+            scroller.ScrollControlIntoView(compactSave);
+            Check(compactSave.RectangleToScreen(compactSave.ClientRectangle).Bottom
                 <= compactPage.RectangleToScreen(compactPage.ClientRectangle).Bottom,
-                "save remains visible at minimum window size");
+                "save is reachable at minimum window size");
             using (Bitmap compact = new(main.Width, main.Height))
             {
                 main.DrawToBitmap(compact, new Rectangle(Point.Empty, main.Size));

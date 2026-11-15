@@ -15,6 +15,7 @@ internal static class SettingsColors
             if (control is SettingsNumberField number) { number.ApplyPalette(palette); return; }
             if (control is SettingsChoice choice) { choice.ApplyPalette(palette, menuTransparencyEnabled); return; }
             if (control is AboutLinkButton aboutLink) { aboutLink.ApplyPalette(palette); return; }
+            if (control is AboutDocumentButton document) { document.ApplyPalette(palette); return; }
             if (control is AppMark mark) { mark.Palette = palette; mark.Invalidate(); }
             if (control is LinkLabel link)
             {

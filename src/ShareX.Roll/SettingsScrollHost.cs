@@ -18,15 +18,13 @@ internal sealed class SettingsScrollHost : Panel
     private bool applying;
     private bool arranging;
     internal bool IsScrolling => motion.Enabled;
-    internal bool IsApplyingScroll => applying;
     internal long ScrollUpdateTicks { get; private set; }
     internal long MaximumScrollUpdateTicks { get; private set; }
     internal int ScrollUpdates { get; private set; }
     private int Offset => -viewport.AutoScrollPosition.Y;
     private int Maximum => Math.Max(0, viewport.DisplayRectangle.Height - viewport.ClientSize.Height);
-    internal int CoveredHeight { get; set; }
     internal Action? PresentScrollFrame { get; set; }
-    private int PageHeight => Math.Max(1, viewport.ClientSize.Height - CoveredHeight);
+    private int PageHeight => Math.Max(1, viewport.ClientSize.Height);
 
     internal SettingsScrollHost(Panel viewport)
     {

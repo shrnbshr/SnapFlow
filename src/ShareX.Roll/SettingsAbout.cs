@@ -104,11 +104,10 @@ internal static class SettingsAbout
         FlowLayoutPanel links = new() { Name = "aboutLinks", AutoSize = true, WrapContents = false, Margin = Padding.Empty };
         void Document(string name, string text, string target)
         {
-            Button button = new()
+            AboutDocumentButton button = new()
             {
                 Name = name, Text = text, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
-                MinimumSize = new Size(112, ButtonSpacing.ActionHeight), Padding = ButtonSpacing.ActionPadding, Font = new Font(font.FontFamily, 10),
-                Tag = "quiet", Margin = new Padding(2, 0, 2, 0), FlatStyle = FlatStyle.Flat, AccessibleDescription = target
+                Font = new Font(font.FontFamily, 10), Margin = new Padding(2, 0, 2, 0), AccessibleDescription = target
             };
             button.Click += (_, _) => Open(target, text);
             links.Controls.Add(button);
@@ -118,6 +117,83 @@ internal static class SettingsAbout
         Document("aboutNotice", L("AboutNoticeLink"), Path.Combine(AppContext.BaseDirectory, "NOTICE.md"));
         Add(Center(links, Padding.Empty));
         return about;
+    }
+}
+
+internal sealed class AboutDocumentButton : Button
+{
+    private readonly UiTween hover, press;
+    private readonly ButtonElevation elevation = new();
+    private CapturePalette palette = CapturePalette.Light;
+
+    internal AboutDocumentButton()
+    {
+        FlatStyle = FlatStyle.Flat;
+        FlatAppearance.BorderSize = 0;
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
+            ControlStyles.ResizeRedraw | ControlStyles.Opaque, true);
+        Cursor = Cursors.Hand;
+        hover = new(this, Invalidate);
+        press = new(this, Invalidate);
+        Disposed += (_, _) => elevation.Dispose();
+    }
+
+    internal void ApplyPalette(CapturePalette value) { palette = value; Invalidate(); }
+
+    public override Size GetPreferredSize(Size proposedSize)
+    {
+        float scale = DeviceDpi / 96f;
+        Size text = TextRenderer.MeasureText(Text, Font, Size.Empty, TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
+        return new Size(text.Width + (int)Math.Ceiling((32 + 2 * ButtonSpacing.Horizontal + 2) * scale),
+            Math.Max((int)Math.Ceiling(ButtonSpacing.ActionHeight * scale),
+                text.Height + (int)Math.Ceiling((24 + 2 * ButtonSpacing.Vertical) * scale)));
+    }
+
+    protected override void OnMouseEnter(EventArgs e) { base.OnMouseEnter(e); hover.SpringTo(1, ButtonElevation.ResponseMilliseconds); }
+    protected override void OnMouseLeave(EventArgs e) { base.OnMouseLeave(e); hover.SpringTo(0, ButtonElevation.ResponseMilliseconds); press.SpringTo(0); }
+    protected override void OnMouseDown(MouseEventArgs e) { if (e.Button == MouseButtons.Left) press.SnapTo(1); base.OnMouseDown(e); }
+    protected override void OnMouseUp(MouseEventArgs e) { press.SpringTo(0, 110); base.OnMouseUp(e); }
+    protected override void OnKeyDown(KeyEventArgs e) { if (e.KeyCode == Keys.Space) press.SnapTo(1); base.OnKeyDown(e); }
+    protected override void OnKeyUp(KeyEventArgs e) { press.SpringTo(0, 110); base.OnKeyUp(e); }
+    protected override void OnMouseCaptureChanged(EventArgs e) { base.OnMouseCaptureChanged(e); if (!Capture) press.SpringTo(0, 110); }
+    protected override void OnLostFocus(EventArgs e) { press.SpringTo(0); base.OnLostFocus(e); }
+    protected override void OnEnabledChanged(EventArgs e)
+    {
+        base.OnEnabledChanged(e);
+        if (!Enabled) { hover?.SnapTo(0); press?.SnapTo(0); }
+    }
+    protected override void OnVisibleChanged(EventArgs e)
+    {
+        base.OnVisibleChanged(e);
+        if (!Visible) { hover?.SnapTo(0); press?.SnapTo(0); }
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        Graphics graphics = e.Graphics;
+        float scale = DeviceDpi / 96f;
+        graphics.Clear(BackColor);
+        graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        float amount = Enabled ? hover.Value * (1 - press.Value) : 0;
+        // Reserve the shadow textures on the first ordinary paint.
+        if (amount == 0) elevation.PrepareShadow(ClientSize, scale, unified: true);
+        else elevation.PaintShadow(graphics, ClientSize, scale, palette.Background.GetBrightness() < .5f, amount, unified: true);
+        RectangleF face = ButtonElevation.FaceBounds(ClientSize, scale);
+        using GraphicsPath path = CaptureDrawing.Rounded(face, ButtonElevation.Radius(face, scale));
+        Color color = CaptureDrawing.Blend(CaptureDrawing.Blend(BackColor, ButtonElevation.Surface(palette), hover.Value), palette.Tint, press.Value);
+        using SolidBrush fill = new(color);
+        graphics.FillPath(fill, path);
+        bool focused = Focused && ShowFocusCues;
+        if (focused || SystemInformation.HighContrast)
+        {
+            using Pen border = new(focused ? palette.Accent : palette.Border, 1.75f * scale);
+            graphics.DrawPath(border, path);
+        }
+        Rectangle caption = Rectangle.Round(face);
+        caption.Inflate(-(int)(ButtonSpacing.Horizontal * scale), 0);
+        TextRenderer.DrawText(graphics, Text, Font, caption, Enabled ? ForeColor : palette.Secondary,
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine |
+            TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis | UiLanguage.TextDirection);
     }
 }
 

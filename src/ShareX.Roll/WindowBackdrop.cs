@@ -136,7 +136,7 @@ internal sealed class WindowBackdrop : IDisposable
         if (control is PreviewSurface) return true;
         for (Control? ancestor = control; ancestor != null; ancestor = ancestor.Parent)
             if (ancestor is PreviewSurface or PictureBox) return false;
-        return control is not PageTransition;
+        return control is not (PageTransition or AboutDocumentButton);
     }
 
     private void Observe(Control control)

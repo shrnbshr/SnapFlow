@@ -71,7 +71,7 @@ internal static class Program
                 else if (args.Contains("--backdrop-transition")) await BackdropTransitionRegression.RunAsync(main, args.Contains("--baseline"));
                 else if (args.Contains("--acrylic-backdrop")) await AcrylicBackdropRegression.RunAsync(main);
                 else if (args.Contains("--layout-consistency")) await LayoutConsistencyRegression.RunAsync(main);
-                else if (args.Contains("--settings-bar-glass")) await SettingsBarGlassRegression.RunAsync(main);
+                else if (args.Contains("--settings-endpoints")) await SettingsEndpointsRegression.RunAsync(main, args.Contains("--desktop-pointer"));
                 else if (args.Contains("--settings-viewport")) await SettingsViewportRegression.RunAsync(main, args.Contains("--baseline"));
                 else if (args.Contains("--taskbar-restore")) await TaskbarRestoreRegression.RunAsync(main);
                 else if (args.Contains("--settings-restore")) await SettingsRestoreRegression.RunAsync(main, args.Contains("--baseline"));
@@ -82,7 +82,6 @@ internal static class Program
                 else if (args.Contains("--settings-reuse")) await SettingsPageReuseRegression.RunAsync(main);
                 else if (args.Contains("--settings-open-latency")) await SettingsOpenLatencyRegression.RunAsync(main, args.Contains("--baseline"));
                 else if (args.Contains("--settings-motion-performance")) await SettingsMotionPerformanceRegression.RunAsync(main, args.Contains("--baseline"));
-                else if (args.Contains("--settings-scroll-cache")) await SettingsScrollCacheRegression.RunAsync(main);
                 else if (args.Contains("--settings-scroll-presentation")) await SettingsScrollPresentationRegression.RunAsync(main, args.Contains("--baseline"), args.Contains("--maximized"));
                 else if (args.Contains("--settings-scroll-motion")) await SettingsScrollMotionRegression.RunAsync(main, args.Contains("--baseline"), args.Contains("--record-scroll"));
                 else if (args.Contains("--preview-zoom")) await PreviewZoomRegression.RunAsync(main);

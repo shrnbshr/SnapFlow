@@ -7,7 +7,7 @@ using System.Runtime.InteropServices;
 
 namespace ShareX.Roll;
 
-internal sealed class SettingsPage : UserControl, IBackdropSnapshotOverlay, IBackdropCachingScope
+internal sealed class SettingsPage : UserControl, IBackdropCachingScope
 {
     internal event EventHandler? ReturnRequested;
     internal event Action<AppearanceMode>? AppearancePreview;
@@ -23,15 +23,12 @@ internal sealed class SettingsPage : UserControl, IBackdropSnapshotOverlay, IBac
     private readonly TableLayoutPanel heading;
     private readonly TableLayoutPanel footer;
     private readonly TableLayoutPanel scrollCanvas = new BackgroundLayout { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 1, Margin = Padding.Empty };
-    private bool arrangingOverlay, initializing = true, restoring;
+    private bool arrangingPage, initializing = true, restoring;
     private readonly Label feedback = new() { Name = "settingsFeedback", AutoSize = true, Dock = DockStyle.Fill, Tag = "secondary", Margin = new Padding(0, 10, 0, 8) };
     private readonly Button save = ActionButton("saveSettingsButton", L("SaveReturn"), 124);
     private readonly Button cancel = ActionButton("cancelSettingsButton", L("Cancel"), 76);
-    private readonly Panel scroller = new OverlayViewport { AutoScroll = true, Margin = Padding.Empty };
+    private readonly SettingsViewport scroller = new() { AutoScroll = true, Margin = Padding.Empty };
     private readonly SettingsScrollHost scrollHost;
-    private readonly SettingsBarBackdrop headingBackdrop;
-    private readonly SettingsBarBackdrop footerBackdrop;
-    private readonly SettingsScrollBackdropCache scrollBackdrop;
     private readonly TableLayoutPanel content = new BackgroundLayout { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 1, Margin = Padding.Empty };
     private readonly TableLayoutPanel generalColumn = CreateColumn("settingsGeneralColumn");
     private readonly TableLayoutPanel referenceColumn = CreateColumn("settingsReferenceColumn");
@@ -60,7 +57,7 @@ internal sealed class SettingsPage : UserControl, IBackdropSnapshotOverlay, IBac
         this.savePreferences = savePreferences;
         scrollHost = new SettingsScrollHost(scroller) { Dock = DockStyle.Fill, Margin = Padding.Empty, PresentScrollFrame = PresentScrollFrame };
 
-        heading = new() { Dock = DockStyle.Top, AutoSize = true, MinimumSize = new Size(0, 76), ColumnCount = 1, RowCount = 1, Margin = Padding.Empty };
+        heading = new() { Name = "heading", Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, RowCount = 1, Margin = Padding.Empty };
         heading.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         FlowLayoutPanel title = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoSize = true, Margin = Padding.Empty };
         title.Controls.Add(new Label { Text = L("Settings"), Font = new Font(Font.FontFamily, 18, FontStyle.Bold), AutoSize = true, Margin = new Padding(0, 0, 0, 5) });
@@ -123,7 +120,6 @@ internal sealed class SettingsPage : UserControl, IBackdropSnapshotOverlay, IBac
         {
             draft.TransparencyEnabled = transparency.Checked;
             if (restoring) return;
-            RefreshBarMaterials();
             TransparencyPreview?.Invoke(transparency.Checked);
             ShowFeedback(L("TransparencyPreview"));
         };
@@ -254,10 +250,14 @@ internal sealed class SettingsPage : UserControl, IBackdropSnapshotOverlay, IBac
         Add(aboutHeading);
         Add(CreateAboutSection());
         scrollCanvas.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        scrollCanvas.Controls.Add(content, 0, 0);
-        scroller.Controls.Add(scrollCanvas);
+        scrollCanvas.RowCount = 3;
+        for (int i = 0; i < 3; i++) scrollCanvas.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        scrollCanvas.Controls.Add(heading, 0, 0);
+        scrollCanvas.Controls.Add(content, 0, 1);
+        heading.TabIndex = 0;
+        content.TabIndex = 1;
 
-        footer = new() { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 1, RowCount = 2, Margin = Padding.Empty };
+        footer = new() { Name = "footer", Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, RowCount = 2, Margin = Padding.Empty, TabIndex = 2 };
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         footer.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         footer.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -289,21 +289,9 @@ internal sealed class SettingsPage : UserControl, IBackdropSnapshotOverlay, IBac
         actions.Controls.Add(reset, 0, 0);
         actions.Controls.Add(buttons, 1, 0);
         footer.Controls.Add(actions, 0, 1);
-        scrollBackdrop = new SettingsScrollBackdropCache(content, () => scrollHost.IsApplyingScroll,
-            () => scrollHost.IsScrolling || scrollingReveal.IsAnimating || FindForm()?.Controls.OfType<PageTransition>().Any(transition => transition.Visible) == true);
-        headingBackdrop = new SettingsBarBackdrop(heading, content, scrollBackdrop, clearAtBottom: true);
-        footerBackdrop = new SettingsBarBackdrop(footer, content, scrollBackdrop);
+        scrollCanvas.Controls.Add(footer, 0, 2);
+        scroller.Controls.Add(scrollCanvas);
         Controls.Add(scrollHost);
-        Controls.Add(heading);
-        Controls.Add(footer);
-        heading.TabIndex = 0;
-        scrollHost.TabIndex = 1;
-        footer.TabIndex = 2;
-        heading.Dock = footer.Dock = DockStyle.None;
-        heading.BringToFront();
-        footer.BringToFront();
-        heading.Layout += (_, _) => ArrangePage();
-        footer.Layout += (_, _) => ArrangePage();
         scrollHost.Controls["settingsScrollBar"]!.VisibleChanged += (_, _) => ArrangePage();
         VisibleChanged += (_, _) => { if (!Visible) EndScrollingReveal(); };
         RefreshSystemAppearance();
@@ -449,55 +437,22 @@ internal sealed class SettingsPage : UserControl, IBackdropSnapshotOverlay, IBac
         CapturePalette palette = CapturePalette.For(draft.Appearance);
         SettingsColors.Apply(this, palette, save, () => draft.TransparencyEnabled);
         scrollHost.ApplyPalette(palette);
-        RefreshBarMaterials();
         foreach (ModeGlyph glyph in glyphs) { glyph.Ink = palette.Secondary; glyph.Invalidate(); }
-    }
-
-    private void RefreshBarMaterials()
-    {
-        CapturePalette palette = CapturePalette.For(draft.Appearance);
-        bool enabled = draft.TransparencyEnabled && WindowBackdrop.IsSupported();
-        headingBackdrop?.Apply(palette, enabled);
-        footerBackdrop?.Apply(palette, enabled);
-    }
-
-    void IBackdropSnapshotOverlay.ApplySnapshotOverlay(BackdropSnapshot snapshot)
-    {
-        headingBackdrop.ApplySnapshot(snapshot, this);
-        footerBackdrop.ApplySnapshot(snapshot, this);
-    }
-
-    protected override void WndProc(ref Message message)
-    {
-        base.WndProc(ref message);
-        // DrawToBitmap prints sibling windows in collection order. Reapply the two
-        // foreground bars after the viewport so existing page-transition snapshots
-        // have the same stacking as the live window.
-        if (message.Msg == 0x317 && message.WParam != 0 && ((long)message.LParam & 16) != 0 && heading != null && footer != null)
-        {
-            SettingsBarBackdrop.PrintOverlay(heading, message.WParam);
-            SettingsBarBackdrop.PrintOverlay(footer, message.WParam);
-        }
     }
 
     private void ArrangePage()
     {
         // Minimized forms temporarily give docked pages a zero client size. Keep the
         // last usable layout instead of wrapping captions into a one-pixel column.
-        if (initializing || arrangingOverlay || heading == null || footer == null || ClientSize.Width <= 0 || ClientSize.Height <= 0 || FindForm()?.WindowState == FormWindowState.Minimized) return;
+        if (initializing || arrangingPage || ClientSize.Width <= 0 || ClientSize.Height <= 0 || FindForm()?.WindowState == FormWindowState.Minimized) return;
         float scale = DeviceDpi / 96f;
         int gap = (int)(28 * scale);
-        int barOuterInset = (int)Math.Round(20 * scale);
-        // Keep fixed captions outside the 32px clear-to-glass edge, with 8px breathing room.
-        int barInnerInset = (int)Math.Ceiling(40 * scale);
         int width = Math.Max(1, ClientSize.Width);
         bool wide = width >= (int)(1240 * scale);
         int readingWidth = Math.Max(1, Math.Min(width - gap * 2, (int)((wide ? 1440 : 760) * scale)));
         int left = (width - readingWidth) / 2;
         int right = width - readingWidth - left;
-        Rectangle previousHeading = heading.Bounds, previousFooter = footer.Bounds;
-        Padding previousHeadingPadding = heading.Padding, previousFooterPadding = footer.Padding;
-        arrangingOverlay = true;
+        arrangingPage = true;
         try
         {
             // Set the final width before measuring the new columns. An intermediate
@@ -509,58 +464,22 @@ internal sealed class SettingsPage : UserControl, IBackdropSnapshotOverlay, IBac
                 ArrangeColumns(wide, gap);
             }
             finally { content.ResumeLayout(true); }
-            // Frost the full viewport width; align both bars with the responsive
-            // content area. Leave the existing scrollbar's hit area unobstructed.
-            Control? track = scrollHost.Controls["settingsScrollBar"];
-            int barWidth = Math.Max(1, width - (track is { Visible: true } ? track.Width : 0));
-            int barRight = Math.Max(0, barWidth - left - readingWidth);
-            heading.Padding = new Padding(left, barOuterInset, barRight, barInnerInset);
-            heading.MaximumSize = new Size(barWidth, 0);
-            heading.MinimumSize = new Size(barWidth, (int)(76 * scale) + gap);
-            footer.Padding = new Padding(left, barInnerInset, barRight, barOuterInset);
-            footer.MaximumSize = new Size(barWidth, 0);
-            footer.MinimumSize = new Size(barWidth, 0);
-            int headerHeight = heading.GetPreferredSize(new Size(barWidth, 0)).Height;
-            int footerHeight = footer.GetPreferredSize(new Size(barWidth, 0)).Height;
-            heading.Bounds = new Rectangle(0, 0, barWidth, headerHeight);
-            footer.Bounds = new Rectangle(0, Math.Max(headerHeight, ClientSize.Height - footerHeight), barWidth, footerHeight);
-            int top = heading.Bottom, bottom = Math.Max(0, ClientSize.Height - footer.Top);
-            // Spacers belong to the scrollable canvas, not viewport.Padding, so AutoScroll
-            // and the existing scrollbar retain exactly the same native scroll range.
-            scrollCanvas.Padding = new Padding(0, top, 0, bottom);
-            ((OverlayViewport)scroller).CoveredEdges = new Padding(0, top, 0, bottom);
-            scrollHost.CoveredHeight = top + bottom;
+            heading.Padding = new Padding(0, gap, 0, gap);
+            footer.Padding = new Padding(0, 0, 0, gap);
         }
-        finally { arrangingOverlay = false; }
-        // Content height changes also run this layout. Keep static bar labels/buttons
-        // cached unless their own geometry changed; their normal invalidations still
-        // handle text, focus, hover, palette and animation feedback.
-        if (heading.Bounds != previousHeading || heading.Padding != previousHeadingPadding) heading.Invalidate(true);
-        if (footer.Bounds != previousFooter || footer.Padding != previousFooterPadding) footer.Invalidate(true);
+        finally { arrangingPage = false; }
     }
 
     private void PresentScrollFrame()
     {
-        // Scroll moves native child windows but leaves their paints queued. Submit content
-        // first, then its fixed glass bars, before presenting the thumb. No new invalidation:
-        // preserve native scroll damage and avoid sampling the bars twice in one frame.
+        // Submit native scroll damage before presenting the thumb.
         long stage = System.Diagnostics.Stopwatch.GetTimestamp();
-        Submit(scroller);
+        if (scroller.IsHandleCreated) RedrawWindow(scroller.Handle, 0, 0, 0x0100 | 0x0080); // RDW_UPDATENOW | RDW_ALLCHILDREN.
         ContentPresentTicks += System.Diagnostics.Stopwatch.GetTimestamp() - stage;
-        stage = System.Diagnostics.Stopwatch.GetTimestamp();
-        Submit(heading);
-        HeadingPresentTicks += System.Diagnostics.Stopwatch.GetTimestamp() - stage;
-        stage = System.Diagnostics.Stopwatch.GetTimestamp();
-        Submit(footer);
-        FooterPresentTicks += System.Diagnostics.Stopwatch.GetTimestamp() - stage;
         PresentedFrames++;
-        static void Submit(Control control)
-        {
-            if (control.IsHandleCreated) RedrawWindow(control.Handle, 0, 0, 0x0100 | 0x0080); // RDW_UPDATENOW | RDW_ALLCHILDREN.
-        }
     }
 
-    internal long ContentPresentTicks, HeadingPresentTicks, FooterPresentTicks;
+    internal long ContentPresentTicks;
     internal int PresentedFrames;
 
     [DllImport("user32.dll")]
@@ -569,37 +488,26 @@ internal sealed class SettingsPage : UserControl, IBackdropSnapshotOverlay, IBac
 
     private sealed class BackgroundLayout : TableLayoutPanel, IBackdropBackground { }
 
-    private sealed class OverlayViewport : SettingsScrollViewport, IBackdropBackground
+    private sealed class SettingsViewport : SettingsScrollViewport, IBackdropBackground
     {
         protected override CreateParams CreateParams
         {
             get
             {
                 CreateParams parameters = base.CreateParams;
-                // PresentScrollFrame submits every invalidated native child before
-                // the fixed bars. Avoid a second full-viewport descendant buffer.
+                // PresentScrollFrame already submits the invalidated children.
                 parameters.ExStyle &= ~0x02000000; // WS_EX_COMPOSITED.
                 return parameters;
             }
         }
-        internal Padding CoveredEdges { get; set; }
         internal bool PreserveScrollPosition { get; set; }
-        protected override Point ScrollToControl(Control activeControl)
-        {
-            if (PreserveScrollPosition || FindForm()?.WindowState == FormWindowState.Minimized) return AutoScrollPosition;
-            Point target = base.ScrollToControl(activeControl);
-            Rectangle bounds = RectangleToClient(activeControl.RectangleToScreen(activeControl.ClientRectangle));
-            bounds.Offset(target.X - AutoScrollPosition.X, target.Y - AutoScrollPosition.Y);
-            int top = CoveredEdges.Top, bottom = ClientSize.Height - CoveredEdges.Bottom;
-            if (bounds.Top < top || bounds.Height > bottom - top) target.Y += top - bounds.Top;
-            else if (bounds.Bottom > bottom) target.Y -= bounds.Bottom - bottom;
-            return target;
-        }
+        protected override Point ScrollToControl(Control activeControl) =>
+            PreserveScrollPosition || FindForm()?.WindowState == FormWindowState.Minimized ? AutoScrollPosition : base.ScrollToControl(activeControl);
     }
 
     protected override void OnResize(EventArgs e)
     {
-        OverlayViewport viewport = (OverlayViewport)scroller;
+        SettingsViewport viewport = scroller;
         bool minimized = ClientSize.Width <= 0 || ClientSize.Height <= 0 || FindForm()?.WindowState == FormWindowState.Minimized;
         if (minimized) viewport.PreserveScrollPosition = true;
         EndScrollingReveal();
@@ -614,7 +522,6 @@ internal sealed class SettingsPage : UserControl, IBackdropSnapshotOverlay, IBac
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
         if (keyData == Keys.Escape) { ReturnRequested?.Invoke(this, EventArgs.Empty); return true; }
-        if (keyData == (Keys.Control | Keys.Return)) { SaveAndReturn(); return true; }
         return base.ProcessCmdKey(ref msg, keyData);
     }
 
@@ -633,13 +540,7 @@ internal sealed class SettingsPage : UserControl, IBackdropSnapshotOverlay, IBac
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing)
-        {
-            EndScrollingReveal();
-            headingBackdrop?.Dispose();
-            footerBackdrop?.Dispose();
-            scrollBackdrop?.Dispose();
-        }
+        if (disposing) EndScrollingReveal();
         base.Dispose(disposing);
     }
 }

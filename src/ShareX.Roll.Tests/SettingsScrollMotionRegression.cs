@@ -285,8 +285,8 @@ internal static class SettingsScrollMotionRegression
                 Check(!host.IsScrolling && Offset() == Math.Min(step, Maximum()), "turning animations off settles active movement immediately");
                 UiMotion.UserEnabled = true;
 
-                viewport.AutoScrollPosition = Point.Empty;
                 Find<Button>(page, "saveSettingsButton").Focus();
+                viewport.AutoScrollPosition = Point.Empty;
                 Control languageCaption = Find<ComboBox>(page, "languageSelector").Parent!.Controls[0];
                 NativeWheel(languageCaption.Controls[0], -120);
                 await Task.Delay(420);

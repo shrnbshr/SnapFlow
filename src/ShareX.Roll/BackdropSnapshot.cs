@@ -67,7 +67,8 @@ internal sealed class BackdropSnapshot
             Rectangle area = Rectangle.Intersect(new Rectangle(origin, control.ClientSize), clip);
             if (area.Width <= 0 || area.Height <= 0) return;
             // Match live rendering: only the preview frame itself may expose its rounded outside corners.
-            if (control is PictureBox || control.Parent is PreviewSurface)
+            // The About document links also paint an opaque card surface and shadow.
+            if (control is PictureBox or AboutDocumentButton || control.Parent is PreviewSurface)
             {
                 for (int y = area.Top; y < area.Bottom; y++)
                     result.Pixels.AsSpan(y * image.Width + area.Left, area.Width).Clear();
@@ -96,8 +97,6 @@ internal sealed class BackdropSnapshot
                 if (child.Visible) ProtectImages(child, new Point(origin.X + child.Left, origin.Y + child.Top), area);
         }
         ProtectImages(page, origin, new Rectangle(Point.Empty, image.Size));
-        // Only pages with overlapping material layers supply an override; other pages keep their masks.
-        if (page is IBackdropSnapshotOverlay overlay) overlay.ApplySnapshotOverlay(result);
         return result;
     }
 
