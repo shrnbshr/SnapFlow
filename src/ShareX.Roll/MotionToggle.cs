@@ -7,7 +7,15 @@ internal sealed class MotionToggle : CheckBox
 {
     private readonly UiTween position;
     private readonly UiTween hover, press;
-    internal CapturePalette Palette { get; set; } = CapturePalette.Light;
+    private CapturePalette palette = CapturePalette.Light;
+    internal CapturePalette Palette
+    {
+        get => palette;
+        set { palette = value; ButtonPointerBounds.ApplyToggle(this, palette.IsClaude); }
+    }
+
+    internal static RectangleF TrackBounds(Size size, float scale) =>
+        new(2 * scale, (size.Height - 24 * scale) / 2, size.Width - 4 * scale, 24 * scale);
 
     internal MotionToggle()
     {
@@ -44,7 +52,7 @@ internal sealed class MotionToggle : CheckBox
         float s = DeviceDpi / 96f;
         g.SmoothingMode = SmoothingMode.AntiAlias;
         g.Clear(Parent?.BackColor ?? p.Surface);
-        RectangleF bounds = new(2 * s, (Height - 24 * s) / 2, Width - 4 * s, 24 * s);
+        RectangleF bounds = TrackBounds(ClientSize, s);
         using GraphicsPath track = CaptureDrawing.Rounded(bounds, 12 * s);
         Color off = CaptureDrawing.Blend(p.Secondary, p.Surface, .12f);
         Color trackColor = CaptureDrawing.Blend(off, p.Accent, position.Value);
@@ -60,8 +68,9 @@ internal sealed class MotionToggle : CheckBox
         if (Focused && ShowFocusCues)
         {
             RectangleF ringBounds = bounds;
-            ringBounds.Inflate(1.5f * s, 1.5f * s);
-            using GraphicsPath ring = CaptureDrawing.Rounded(ringBounds, 13.5f * s);
+            float offset = p.IsClaude ? -.75f * s : 1.5f * s;
+            ringBounds.Inflate(offset, offset);
+            using GraphicsPath ring = CaptureDrawing.Rounded(ringBounds, 12 * s + offset);
             using Pen focus = new(p.Accent, 1.5f * s);
             g.DrawPath(focus, ring);
         }

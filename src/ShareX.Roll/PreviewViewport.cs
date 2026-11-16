@@ -554,8 +554,9 @@ internal sealed class PreviewZoomBar : Panel
     {
         palette = value;
         BackColor = palette.Surface;
+        CaptureTypography.ApplyDescription(percent, width.Font, palette);
         foreach (Button button in Controls) palette.StyleButton(button);
-        CapturePalette fitPalette = reading ? palette with { Accent = palette.Tint, AccentText = palette.Text } : palette;
+        CapturePalette fitPalette = reading && !palette.IsClaude ? palette with { Accent = palette.Tint, AccentText = palette.Text } : palette;
         fitPalette.StyleButton(width, reading);
         // The shared button styler uses visible glyphs as names; restore this toolbar's
         // localized meanings without repeating tooltip registration or layout.

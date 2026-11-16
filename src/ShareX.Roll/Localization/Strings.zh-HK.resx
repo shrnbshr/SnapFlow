@@ -292,4 +292,8 @@
   <data xml:space="preserve" name="TransparencyHint"><value>使用毛玻璃視窗背景，關閉後使用實色背景。</value></data>
   <data xml:space="preserve" name="TransparencyUnavailable"><value>系統未開啟透明效果、已啟用高對比度或不支援此效果，目前使用實色背景。</value></data>
   <data xml:space="preserve" name="TransparencyPreview"><value>已預覽透明模式。儲存後生效，返回將放棄變更。</value></data>
+  <data xml:space="preserve" name="SoftwareStyle"><value>選擇軟件風格</value></data>
+  <data xml:space="preserve" name="SoftwareStyleDefault"><value>預設風格</value></data>
+  <data xml:space="preserve" name="SoftwareStyleClaude"><value>Claude 風格</value></data>
+  <data xml:space="preserve" name="SoftwareStyleSolid"><value>Claude 風格使用實色背景。</value></data>
 </root>

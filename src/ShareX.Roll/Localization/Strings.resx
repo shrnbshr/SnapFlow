@@ -292,4 +292,8 @@ Esc to cancel</value>
   <data xml:space="preserve" name="TransparencyHint"><value>Use a frosted window background. Turn off for a solid background.</value></data>
   <data xml:space="preserve" name="TransparencyUnavailable"><value>A solid background is used because Windows transparency is off, high contrast is on, or this system is unsupported.</value></data>
   <data xml:space="preserve" name="TransparencyPreview"><value>Transparency previewed. Save to keep it; going back discards changes.</value></data>
+  <data xml:space="preserve" name="SoftwareStyle"><value>Choose software style</value></data>
+  <data xml:space="preserve" name="SoftwareStyleDefault"><value>Default style</value></data>
+  <data xml:space="preserve" name="SoftwareStyleClaude"><value>Claude style</value></data>
+  <data xml:space="preserve" name="SoftwareStyleSolid"><value>Claude style uses a solid background.</value></data>
 </root>

@@ -52,7 +52,7 @@ internal static class SettingsAbout
             TextAlign = ContentAlignment.MiddleCenter, Font = new Font(font.FontFamily, 10), Tag = "secondary", Margin = new Padding(0, 4, 0, 0)
         }, 0, 1);
         Add(branding);
-        Add(new Label
+        Add(new DescriptionLabel
         {
             Name = "aboutTagline", Text = L("AboutTagline"), AutoSize = true, Dock = DockStyle.Top,
             TextAlign = ContentAlignment.MiddleCenter, Font = new Font(font.FontFamily, 10.5f),
@@ -90,12 +90,12 @@ internal static class SettingsAbout
         projectTips.SetToolTip(account, account.AccessibleDescription);
         about.Disposed += (_, _) => projectTips.Dispose();
         Add(project);
-        Add(new Label
+        Add(new DescriptionLabel
         {
             Name = "aboutOrigin", Text = L("AboutOrigin"), AutoSize = true, Dock = DockStyle.Top,
             TextAlign = ContentAlignment.MiddleCenter, Font = new Font(font.FontFamily, 10), Tag = "secondary", Margin = new Padding(8, 0, 8, 8)
         });
-        Add(new Label
+        Add(new DescriptionLabel
         {
             Name = "aboutCredits", Text = L("AboutLicense") + Environment.NewLine + "Copyright (c) 2007–2026 ShareX Team.",
             AutoSize = true, Dock = DockStyle.Top, TextAlign = ContentAlignment.MiddleCenter,
@@ -175,25 +175,36 @@ internal sealed class AboutDocumentButton : Button
         graphics.Clear(BackColor);
         graphics.SmoothingMode = SmoothingMode.AntiAlias;
         float amount = Enabled ? hover.Value * (1 - press.Value) : 0;
-        // Reserve the shadow textures on the first ordinary paint.
-        if (amount == 0) elevation.PrepareShadow(ClientSize, scale, unified: true);
-        else elevation.PaintShadow(graphics, ClientSize, scale, palette.Background.GetBrightness() < .5f, amount, unified: true);
         RectangleF face = ButtonElevation.FaceBounds(ClientSize, scale);
         using GraphicsPath path = CaptureDrawing.Rounded(face, ButtonElevation.Radius(face, scale));
-        Color color = CaptureDrawing.Blend(CaptureDrawing.Blend(BackColor, ButtonElevation.Surface(palette), hover.Value), palette.Tint, press.Value);
-        using SolidBrush fill = new(color);
-        graphics.FillPath(fill, path);
+        // Reserve the shadow textures on the first ordinary paint.
+        if (!palette.IsClaude)
+        {
+            if (amount == 0) elevation.PrepareShadow(ClientSize, scale, unified: true);
+            else elevation.PaintShadow(graphics, ClientSize, scale, palette.Background.GetBrightness() < .5f, amount, unified: true);
+            Color color = CaptureDrawing.Blend(CaptureDrawing.Blend(BackColor, ButtonElevation.Surface(palette), hover.Value), palette.Tint, press.Value);
+            using SolidBrush fill = new(color);
+            graphics.FillPath(fill, path);
+        }
         bool focused = Focused && ShowFocusCues;
         if (focused || SystemInformation.HighContrast)
         {
             using Pen border = new(focused ? palette.Accent : palette.Border, 1.75f * scale);
-            graphics.DrawPath(border, path);
+            if (palette.IsClaude) CaptureDrawing.DrawInsideBorder(graphics, face, ButtonElevation.Radius(face, scale), border.Color, border.Width);
+            else graphics.DrawPath(border, path);
         }
         Rectangle caption = Rectangle.Round(face);
         caption.Inflate(-(int)(ButtonSpacing.Horizontal * scale), 0);
-        TextRenderer.DrawText(graphics, Text, Font, caption, Enabled ? ForeColor : palette.Secondary,
+        TextFormatFlags flags =
             TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine |
-            TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis | UiLanguage.TextDirection);
+            TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis | UiLanguage.TextDirection;
+        Color ink = Enabled ? ForeColor : palette.Secondary;
+        if (palette.IsClaude)
+        {
+            float emphasis = Enabled ? Math.Max(hover.Value, press.Value) : 0;
+            CaptureDrawing.DrawUnderlinedText(graphics, Text, Font, caption, CaptureDrawing.Blend(ink, palette.Accent, emphasis), flags, scale, emphasis);
+        }
+        else TextRenderer.DrawText(graphics, Text, Font, caption, ink, flags);
     }
 }
 
@@ -238,14 +249,16 @@ internal sealed class AboutLinkButton : Button
         g.Clear(Parent?.BackColor ?? palette.Surface);
         g.SmoothingMode = SmoothingMode.AntiAlias;
         RectangleF face = ButtonElevation.CompactFaceBounds(ClientSize, s);
-        elevation.PaintShadow(g, ClientSize, s, palette.Background.GetBrightness() < .5f, Enabled ? hover.Value * (1 - press.Value) : 0, compact: true, unified: true);
+        elevation.PaintShadow(g, ClientSize, s, palette.Background.GetBrightness() < .5f, Enabled && !palette.IsClaude ? hover.Value * (1 - press.Value) : 0, compact: true, unified: true);
         using GraphicsPath shape = CaptureDrawing.Rounded(face, ButtonElevation.CompactRadius(face, s));
-        using SolidBrush fill = new(CaptureDrawing.Blend(CaptureDrawing.Blend(palette.Canvas, ButtonElevation.Surface(palette), hover.Value), palette.Tint, press.Value));
+        using SolidBrush fill = new(palette.IsClaude ? Parent?.BackColor ?? palette.Surface :
+            CaptureDrawing.Blend(CaptureDrawing.Blend(palette.Canvas, ButtonElevation.Surface(palette), hover.Value), palette.Tint, press.Value));
         g.FillPath(fill, shape);
         if (Focused && ShowFocusCues || SystemInformation.HighContrast)
         {
             using Pen edge = new(Focused ? palette.Accent : palette.Border, 1.75f * s);
-            g.DrawPath(edge, shape);
+            if (palette.IsClaude) CaptureDrawing.DrawInsideBorder(g, face, ButtonElevation.CompactRadius(face, s), edge.Color, edge.Width);
+            else g.DrawPath(edge, shape);
         }
         using Pen glyph = new(palette.Secondary, 1.5f * s) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
         float x = face.Left + ButtonSpacing.Horizontal * s, y = Height / 2f - 10 * s;
@@ -260,13 +273,21 @@ internal sealed class AboutLinkButton : Button
             g.DrawLine(glyph, x + 7 * s, y, x + 7 * s, y + 20 * s);
             g.DrawLine(glyph, x + 10 * s, y + 5 * s, x + 15 * s, y + 5 * s);
         }
-        using Font title = new(Font.FontFamily, 10.5f, FontStyle.Bold);
+        using Font title = new(Font.FontFamily, 10.5f, palette.IsClaude ? FontStyle.Regular : FontStyle.Bold);
         int titleHeight = TextRenderer.MeasureText("Ag", title).Height;
         int detailHeight = TextRenderer.MeasureText("Ag", Font).Height;
         int top = (Height - titleHeight - detailHeight - (int)(6 * s)) / 2;
         int left = (int)(face.Left + (ButtonSpacing.Horizontal + 20 + ButtonSpacing.IconGap) * s);
-        TextRenderer.DrawText(g, heading, title, new Rectangle(left, top, Math.Max(1, DetailAvailable), titleHeight), palette.Text,
-            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+        Rectangle headingBounds = new(left, top, Math.Max(1, DetailAvailable), palette.IsClaude ? titleHeight + (int)Math.Ceiling(3 * s) : titleHeight);
+        const TextFormatFlags headingFlags = TextFormatFlags.Left | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding;
+        if (palette.IsClaude)
+        {
+            float emphasis = Enabled ? Math.Max(hover.Value, press.Value) : 0;
+            Color ink = Enabled ? palette.Text : palette.Secondary;
+            CaptureDrawing.DrawUnderlinedText(g, heading, title, headingBounds, CaptureDrawing.Blend(ink, palette.Accent, emphasis), headingFlags, s, emphasis);
+            glyph.Color = CaptureDrawing.Blend(glyph.Color, palette.Accent, emphasis);
+        }
+        else TextRenderer.DrawText(g, heading, title, headingBounds, palette.Text, headingFlags | TextFormatFlags.VerticalCenter);
         TextRenderer.DrawText(g, detail, Font, new Rectangle(left, top + titleHeight + (int)(6 * s), Math.Max(1, DetailAvailable), detailHeight), palette.Secondary,
             TextFormatFlags.Left | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
         float arrowX = face.Right - ButtonSpacing.Horizontal * s, arrowY = Height / 2f;

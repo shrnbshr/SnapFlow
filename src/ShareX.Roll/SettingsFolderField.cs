@@ -83,7 +83,8 @@ internal sealed class SettingsFolderField : Control
         using SolidBrush fill = new(palette.Canvas);
         using Pen edge = new(CaptureDrawing.Blend(palette.Border, palette.Accent, focus.Value), (ContainsFocus ? 1.5f : 1) * scale);
         graphics.FillPath(fill, shape);
-        if (ContainsFocus || SystemInformation.HighContrast) graphics.DrawPath(edge, shape);
+        if (palette.IsClaude && ContainsFocus) CaptureDrawing.DrawInsideBorder(graphics, bounds, 10 * scale, edge.Color, edge.Width);
+        else if (ContainsFocus || SystemInformation.HighContrast) graphics.DrawPath(edge, shape);
         // A small folder outline makes the location field recognizable beside numeric and language inputs.
         float x = ButtonSpacing.Horizontal * scale, y = (Height - 14 * scale) / 2;
         using GraphicsPath icon = new();

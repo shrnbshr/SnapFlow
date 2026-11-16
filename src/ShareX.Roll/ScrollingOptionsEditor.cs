@@ -183,14 +183,15 @@ internal sealed class SettingsDisclosure : Button
         else g.Clear(Parent?.BackColor ?? Palette.Surface);
         g.SmoothingMode = SmoothingMode.AntiAlias;
         RectangleF face = ButtonElevation.CompactFaceBounds(ClientSize, s);
-        elevation.PaintShadow(g, ClientSize, s, Palette.Background.GetBrightness() < .5f, Enabled ? hover.Value : 0, compact: true, unified: true);
+        elevation.PaintShadow(g, ClientSize, s, Palette.Background.GetBrightness() < .5f, Enabled && !Palette.IsClaude ? hover.Value : 0, compact: true, unified: true);
         using GraphicsPath shape = CaptureDrawing.Rounded(face, ButtonElevation.CompactRadius(face, s));
         using SolidBrush fill = new(CaptureDrawing.Blend(Parent?.BackColor ?? Palette.Surface, ButtonElevation.Surface(Palette), hover.Value));
         g.FillPath(fill, shape);
         if (Focused && ShowFocusCues || SystemInformation.HighContrast)
         {
             using Pen edge = new(Palette.Accent, 1.5f * s);
-            g.DrawPath(edge, shape);
+            if (Palette.IsClaude) CaptureDrawing.DrawInsideBorder(g, face, ButtonElevation.CompactRadius(face, s), edge.Color, edge.Width);
+            else g.DrawPath(edge, shape);
         }
         TextRenderer.DrawText(g, Text, Font, new Rectangle((int)(SettingsLayout.Inset * s), 0, Math.Max(0, Width - (int)(2 * SettingsLayout.Inset * s)), Height), Palette.Text,
             TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | UiLanguage.TextDirection);

@@ -104,9 +104,16 @@ public sealed partial class MainForm
         cachedSettingsSnapshotGlass = windowBackdrop?.IsActive == true;
     }
 
-    private void PreviewAppearance(AppearanceMode mode)
+    private void PreviewAppearance(CapturePalette palette)
     {
-        CapturePalette palette = CapturePalette.For(mode);
+        if (palette.Style != appearancePalette.Style)
+        {
+            // A snapshot from the previous window material cannot be composited over the new one.
+            EndPageTransition();
+            ApplyPalette(palette);
+            settingsPage?.SettleThemeSelection();
+            return;
+        }
         if (palette == appearancePalette) { ApplyPalette(palette); return; }
         Control page = settingsPage ?? (Control)workspace;
         PageTransition? transition = PreparePageChange(page, true, crossFade: true);
@@ -195,7 +202,10 @@ public sealed partial class MainForm
         // Restore the saved material before taking the return snapshot, so its alpha mask matches the live page.
         transparencyPreview = null;
         ApplyWindowBackdrop();
-        PageTransition? transition = PreparePageChange(page, false);
+        PageTransition? transition = null;
+        if (appearancePalette.Style == CapturePalette.For(preferences.Appearance, preferences.Style).Style)
+            transition = PreparePageChange(page, false);
+        else EndPageTransition();
         settingsPage = null;
         workspace.Visible = true;
         settingsButton.Focus();

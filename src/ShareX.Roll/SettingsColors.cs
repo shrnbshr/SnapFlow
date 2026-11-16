@@ -7,9 +7,20 @@ internal static class SettingsColors
     {
         void Paint(Control control, Color background)
         {
-            if (control is SettingsGroup group) { background = palette.Surface; group.Palette = palette; group.Invalidate(); }
+            if (control is SettingsGroup group)
+            {
+                group.Palette = palette;
+                background = group.SurfaceColor;
+                group.Invalidate();
+            }
             control.BackColor = background;
             control.ForeColor = Equals(control.Tag, "secondary") ? palette.Secondary : palette.Text;
+            if (control is DescriptionLabel description)
+                CaptureTypography.ApplyDescription(description, root.Font, palette);
+            if (control is AboutDocumentButton)
+                ButtonPointerBounds.Apply(control, palette.IsClaude);
+            else if (control is AboutLinkButton or SettingsDisclosure or ShortcutRecorder or ShortcutClearButton or ThemeOption)
+                ButtonPointerBounds.Apply(control, palette.IsClaude, compact: true, radius: control is ThemeOption ? 8 : null);
             if (control.Name == "aboutDivider") control.BackColor = palette.Border;
             if (control is SettingsFolderField folderField) { folderField.ApplyPalette(palette); return; }
             if (control is SettingsNumberField number) { number.ApplyPalette(palette); return; }
@@ -21,6 +32,7 @@ internal static class SettingsColors
             {
                 link.LinkColor = link.VisitedLinkColor = palette.Accent;
                 link.ActiveLinkColor = palette.Text;
+                link.LinkBehavior = palette.IsClaude ? LinkBehavior.AlwaysUnderline : LinkBehavior.SystemDefault;
             }
             if (control is ShortcutRecorder recorder) { recorder.Palette = palette; recorder.Invalidate(); }
             else if (control is ShortcutClearButton clear) { clear.Palette = palette; clear.Invalidate(); }

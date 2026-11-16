@@ -209,7 +209,7 @@ internal sealed class EditorMenuBackdrop : NativeWindow, IDisposable
 
     private void UpdateShadow()
     {
-        if (disposed || !menu.IsHandleCreated || !menu.Visible || SystemInformation.HighContrast)
+        if (disposed || !menu.IsHandleCreated || !menu.Visible || SystemInformation.HighContrast || palette.IsClaude)
         {
             shadow.Release();
             return;

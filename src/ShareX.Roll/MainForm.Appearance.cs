@@ -20,7 +20,7 @@ public sealed partial class MainForm
 
     private void ApplyWindowBackdrop()
     {
-        bool enabled = transparencyPreview ?? preferences.TransparencyEnabled;
+        bool enabled = appearancePalette.AllowsTransparency(transparencyPreview ?? preferences.TransparencyEnabled);
         windowBackdrop?.Apply(appearancePalette, enabled);
         preview.ZoomTransparencyEnabled = enabled;
     }
@@ -70,8 +70,8 @@ public sealed partial class MainForm
     private void ApplyAppearance()
     {
         if (IsDisposed || Disposing) return;
-        UiMotion.UserEnabled = preferences.AnimationsEnabled;
-        ApplyPalette(CapturePalette.For(preferences.Appearance));
+        if (settingsPage == null) UiMotion.UserEnabled = preferences.AnimationsEnabled;
+        ApplyPalette(settingsPage?.PreviewPalette ?? CapturePalette.For(preferences.Appearance, preferences.Style));
     }
 
     private void ApplyPalette(CapturePalette palette)
@@ -83,6 +83,10 @@ public sealed partial class MainForm
         ApplyWindowFrameAppearance();
         BackColor = palette.Background;
         PaintContainers(workspace, palette, palette.Background);
+        UpdateCaptureSidebarWidth();
+        CaptureTypography.ApplyDescription(captureTip, Font, palette);
+        CaptureTypography.ApplyDescription(status, Font, palette);
+        CaptureTypography.ApplyDescription(previewHint, Font, palette);
         PaintContainers(previewFrame, palette, palette.Surface);
         ((PreviewSurface)previewFrame).Palette = palette;
         previewFrame.Invalidate();
@@ -132,7 +136,7 @@ public sealed partial class MainForm
     {
         form.OptionsRequested = options =>
         {
-            using ScrollingOptionsDialog dialog = new(options, appearancePalette, preferences.TransparencyEnabled);
+            using ScrollingOptionsDialog dialog = new(options, appearancePalette, appearancePalette.AllowsTransparency(preferences.TransparencyEnabled));
             dialog.ShowDialog(form);
         };
         // Reparent the existing controls only. Their click handlers, scroll/pan behavior and lifetimes are unchanged.

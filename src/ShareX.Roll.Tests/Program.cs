@@ -65,6 +65,7 @@ internal static class Program
                 else if (args.Contains("--startup-painting")) await StartupPaintingRegression.RunAsync(main, args.Contains("--baseline"));
                 else if (args.Contains("--button-hover")) await ButtonHoverRegression.RunAsync(main, args.Contains("--baseline"), args.Contains("--all-button-types"));
                 else if (args.Contains("--transparency-startup")) TransparencySettingsRegression.VerifyStartup(main, !args.Contains("--expected-off"));
+                else if (args.Contains("--software-style")) await SoftwareStyleRegression.RunAsync(main);
                 else if (args.Contains("--theme-transition")) await ThemeTransitionRegression.RunAsync(main);
                 else if (args.Contains("--transparency-flicker")) await TransparencyFlickerRegression.RunAsync(main, args.Contains("--baseline"));
                 else if (args.Contains("--transparency-settings")) await TransparencySettingsRegression.RunAsync(main);

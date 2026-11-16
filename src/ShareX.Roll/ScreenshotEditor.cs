@@ -40,7 +40,7 @@ internal static class ScreenshotEditor
             imageBounds.Inflate((int)Math.Ceiling(8 * editor.DeviceDpi / 96f), (int)Math.Ceiling(8 * editor.DeviceDpi / 96f));
             return imageBounds;
         });
-        bool transparency = preferences?.TransparencyEnabled ?? true;
+        bool transparency = palette.AllowsTransparency(preferences?.TransparencyEnabled ?? true);
         void InitializeNativeAppearance()
         {
             if (!editor.IsHandleCreated) return;

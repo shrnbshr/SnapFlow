@@ -10,7 +10,7 @@ internal sealed class SaveLocationOptions : UserControl
     private readonly TextBox folder = new() { Name = "defaultSaveFolderPath", ReadOnly = true, Dock = DockStyle.Fill, Margin = new Padding(0, 0, 10, 0) };
     private readonly Button browse = new() { Name = "browseSaveFolderButton", AutoSize = true, MinimumSize = new Size(120, ButtonSpacing.ActionHeight), Padding = ButtonSpacing.ActionPadding, Margin = Padding.Empty, FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand };
     private readonly TableLayoutPanel pathRow = new() { Name = "saveFolderPathRow", Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Height = 38, ColumnCount = 2, RowCount = 1, Margin = new Padding(0, 12, 0, 0) };
-    private readonly Label validation = new() { Name = "saveFolderValidation", AutoSize = true, Dock = DockStyle.Top, Tag = "secondary", Margin = new Padding(0, 8, 0, 0) };
+    private readonly DescriptionLabel validation = new() { Name = "saveFolderValidation", AutoSize = true, Dock = DockStyle.Top, Tag = "secondary", Margin = new Padding(0, 8, 0, 0) };
     internal event EventHandler? Changed;
     internal TableLayoutPanel Header { get; }
 
@@ -32,7 +32,7 @@ internal sealed class SaveLocationOptions : UserControl
         group.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         Header = new SettingsOptionHeader { Name = "saveFolderHeader", Dock = DockStyle.Top };
         Label title = new() { Text = L("DefaultSaveFolder"), AutoSize = true, Margin = Padding.Empty };
-        Label hint = new() { Text = L("DefaultSaveFolderHint"), Tag = "secondary", Font = new Font(Font.FontFamily, 10) };
+        DescriptionLabel hint = new() { Text = L("DefaultSaveFolderHint"), Tag = "secondary", Font = new Font(Font.FontFamily, 10) };
         SettingsLayout.ConfigureOption(Header, title, hint, useFolder);
         useFolder.AccessibleName = L("DefaultSaveFolder");
         useFolder.AccessibleDescription = L("DefaultSaveFolderHint");

@@ -185,6 +185,7 @@ internal sealed class EditorOptionChoice : Button
         palette = value;
         BackColor = value.Background;
         ForeColor = value.Text;
+        ButtonPointerBounds.ApplyInset(this, value.IsClaude, 10);
         Invalidate();
     }
 
@@ -194,13 +195,15 @@ internal sealed class EditorOptionChoice : Button
         Graphics g = e.Graphics;
         g.Clear(palette.Background);
         g.SmoothingMode = SmoothingMode.AntiAlias;
-        using GraphicsPath path = CaptureDrawing.Rounded(new RectangleF(s, s, Width - 2 * s, Height - 2 * s), 10 * s);
+        RectangleF face = new(s, s, Width - 2 * s, Height - 2 * s);
+        using GraphicsPath path = CaptureDrawing.Rounded(face, 10 * s);
         using SolidBrush fill = new(hovering ? palette.Hover : palette.Canvas);
         g.FillPath(fill, path);
         if (Focused && ShowFocusCues || menu?.Visible == true || SystemInformation.HighContrast)
         {
             using Pen border = new(palette.Accent, 1.5f * s);
-            g.DrawPath(border, path);
+            if (palette.IsClaude) CaptureDrawing.DrawInsideBorder(g, face, 10 * s, border.Color, border.Width);
+            else g.DrawPath(border, path);
         }
         TextRenderer.DrawText(g, Text, Font, new Rectangle((int)(12 * s), 0, Math.Max(1, Width - (int)(42 * s)), Height),
             Enabled ? palette.Text : palette.Secondary, TextFormatFlags.Left | TextFormatFlags.VerticalCenter |

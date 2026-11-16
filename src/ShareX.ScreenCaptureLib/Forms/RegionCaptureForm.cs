@@ -612,6 +612,7 @@ namespace ShareX.ScreenCaptureLib
 
         private void RegionCaptureForm_Resize(object sender, EventArgs e)
         {
+            if (IsClosing) return;
             OnMoved();
             if (IsEditorMode && Options.UseEditorChrome && IsEditorCropPending) ZoomToFit();
             else PanToOffset(CanvasCenterOffset);

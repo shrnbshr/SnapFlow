@@ -30,7 +30,7 @@ internal sealed class ButtonElevation : IDisposable
     private float shadowRadius;
     private bool shadowUnified;
 
-    internal static Color Surface(CapturePalette palette) => SystemInformation.HighContrast ? palette.Surface :
+    internal static Color Surface(CapturePalette palette) => SystemInformation.HighContrast ? palette.Surface : palette.IsClaude ? palette.Hover :
         palette.Background.GetBrightness() < .5f ? CaptureDrawing.Blend(palette.Surface, palette.Hover, .4f) : palette.Canvas;
 
     internal static RectangleF FaceBounds(Size size, float scale)

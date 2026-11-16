@@ -97,7 +97,8 @@ internal static class PreviewActionLayoutRegression
             }
             main.Size = main.MinimumSize;
             Button[] actions = Find<Control>(main, "previewActions").Controls.OfType<Button>().ToArray();
-            Font[] fonts = actions.Select(button => button.Font).ToArray();
+            // WinForms may dispose fonts currently assigned to controls during DPI scaling.
+            Font[] fonts = actions.Select(button => (Font)button.Font.Clone()).ToArray();
             Font[] larger = fonts.Select(font => new Font(font.FontFamily, 16, font.Style)).ToArray();
             try
             {
@@ -109,7 +110,12 @@ internal static class PreviewActionLayoutRegression
             }
             finally
             {
-                for (int i = 0; i < actions.Length; i++) actions[i].Font = fonts[i];
+                for (int i = 0; i < actions.Length; i++)
+                {
+                    Font restored = fonts[i];
+                    actions[i].Font = restored;
+                    actions[i].Disposed += (_, _) => restored.Dispose();
+                }
                 foreach (Font font in larger) font.Dispose();
             }
         }

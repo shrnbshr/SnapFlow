@@ -13,6 +13,9 @@ public sealed partial class MainForm
         Tag = "secondary", Margin = new Padding(4, 8, 0, 0)
     };
     private TableLayoutPanel captureSidebar = null!;
+    private TableLayoutPanel captureBody = null!;
+    private Label captureHeading = null!;
+    private bool workspaceLoaded;
 
     private void InitializeWorkspaceLayout()
     {
@@ -28,11 +31,12 @@ public sealed partial class MainForm
         TableLayoutPanel heading = new() { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = new Padding(0, 0, 0, 18) };
         heading.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         heading.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        heading.Controls.Add(new Label
+        captureHeading = new Label
         {
             Name = "captureHeading", Text = L("NewCapture"), AutoSize = true, Font = new Font(Font.FontFamily, 18, FontStyle.Bold),
             Margin = new Padding(0, 1, 0, 0), Anchor = AnchorStyles.Left
-        }, 0, 0);
+        };
+        heading.Controls.Add(captureHeading, 0, 0);
         settingsButton.AutoSize = false;
         settingsButton.MinimumSize = Size.Empty;
         settingsButton.Size = new Size(124, ButtonSpacing.ActionHeight);
@@ -45,9 +49,10 @@ public sealed partial class MainForm
         heading.Controls.Add(settingsButton, 1, 0);
         workspace.Controls.Add(heading, 0, 0);
 
-        TableLayoutPanel body = new() { Name = "captureBody", Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = Padding.Empty };
-        body.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 272));
-        body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        captureBody = new() { Name = "captureBody", Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = Padding.Empty };
+        captureBody.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 272));
+        captureBody.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        captureBody.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         captureSidebar = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = ApplicationPreferences.Actions.Length + 2, Margin = new Padding(0, 0, 24, 0) };
         captureSidebar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         const int captureCardHeight = 88;
@@ -96,7 +101,7 @@ public sealed partial class MainForm
         };
         captureSidebar.HandleCreated += (_, _) => ArrangeCaptureRows();
         captureSidebar.DpiChangedAfterParent += (_, _) => ArrangeCaptureRows();
-        body.Controls.Add(captureSidebar, 0, 0);
+        captureBody.Controls.Add(captureSidebar, 0, 0);
 
         previewFrame = new PreviewSurface
         {
@@ -193,6 +198,7 @@ public sealed partial class MainForm
         toolbar.SizeChanged += (_, _) => QueueToolbarLayout();
         toolbar.DpiChangedAfterParent += (_, _) => QueueToolbarLayout();
         previewHint.TextChanged += (_, _) => QueueToolbarLayout();
+        previewHint.FontChanged += (_, _) => QueueToolbarLayout();
         foreach (Button button in new[] { settingsButton, edit, copy, save })
         {
             button.TextChanged += (_, _) => QueueToolbarLayout();
@@ -202,8 +208,8 @@ public sealed partial class MainForm
         previewFrame.Controls.Add(toolbar, 0, 0);
         preview.Margin = Padding.Empty;
         previewFrame.Controls.Add(preview, 0, 1);
-        body.Controls.Add(previewFrame, 1, 0);
-        workspace.Controls.Add(body, 0, 1);
+        captureBody.Controls.Add(previewFrame, 1, 0);
+        workspace.Controls.Add(captureBody, 0, 1);
         status.Tag = "secondary";
         status.Font = new Font(Font.FontFamily, 10);
         status.Margin = Padding.Empty;
@@ -213,7 +219,21 @@ public sealed partial class MainForm
         // Initial sizes are logical pixels; WinForms applies the first DPI scale afterwards.
         // Load runs after that scale and the native handles exist. Do the initial
         // responsive layout before the first frame, rather than its queued follow-up.
-        Load += (_, _) => ReflowToolbar();
+        Load += (_, _) =>
+        {
+            workspaceLoaded = true;
+            UpdateCaptureSidebarWidth();
+            ReflowToolbar();
+        };
+        captureBody.DpiChangedAfterParent += (_, _) => UpdateCaptureSidebarWidth();
+    }
+
+    private void UpdateCaptureSidebarWidth()
+    {
+        // Keep the initial column in logical pixels until WinForms finishes startup scaling.
+        if (!workspaceLoaded) return;
+        int logicalWidth = appearancePalette.IsClaude ? 220 : 272;
+        captureBody.ColumnStyles[0].Width = logicalWidth * captureBody.DeviceDpi / 96f;
     }
 
     private void RefreshPreviewToolbar()
@@ -230,7 +250,7 @@ public sealed partial class MainForm
         settingsButton.Text = L("Settings");
         settingsButton.AccessibleDescription = L("SettingsDescription");
         captureTip.Text = L("CaptureTip");
-        Controls.Find("captureHeading", true).Single().Text = L("NewCapture");
+        captureHeading.Text = L("NewCapture");
         foreach (CaptureShortcut action in ApplicationPreferences.Actions)
         {
             CaptureModeButton button = modeButtons[action.ModeKey];
@@ -282,10 +302,14 @@ internal sealed class PreviewSurface : TableLayoutPanel
         Graphics g = e.Graphics;
         g.SmoothingMode = SmoothingMode.AntiAlias;
         g.Clear(Palette.Background);
-        using GraphicsPath path = CaptureDrawing.Rounded(new RectangleF(.5f, .5f, Width - 1, Height - 1), 20 * DeviceDpi / 96f);
+        float scale = DeviceDpi / 96f;
+        RectangleF bounds = Palette.IsClaude ? ClientRectangle : new RectangleF(.5f, .5f, Width - 1, Height - 1);
+        float radius = (Palette.IsClaude ? 10 : 20) * scale;
+        using GraphicsPath path = CaptureDrawing.Rounded(bounds, radius);
         using SolidBrush fill = new(Palette.Surface);
         using Pen border = new(Palette.Border);
         g.FillPath(fill, path);
-        g.DrawPath(border, path);
+        if (Palette.IsClaude) CaptureDrawing.DrawInsideBorder(g, bounds, radius, Palette.Border, scale);
+        else g.DrawPath(border, path);
     }
 }

@@ -159,7 +159,7 @@ internal static class EditorChrome
             status.ForeColor = palette.Secondary;
             Font? oldTitleFont = titleFont, oldStatusFont = statusFont;
             title.Font = titleFont = new Font(editor.Font.FontFamily, 14, FontStyle.Bold);
-            status.Font = statusFont = new Font(editor.Font.FontFamily, 10);
+            status.Font = statusFont = CaptureTypography.CreateDescription(editor.Font, 10, palette);
             oldTitleFont?.Dispose();
             oldStatusFont?.Dispose();
             foreach (ToolStrip strip in new[] { tools, actions })
@@ -189,6 +189,7 @@ internal static class EditorChrome
                 }
                 strip.Renderer = new EditorToolStripRenderer(strip, palette);
                 EditorOverflow.Install(strip, strip == tools ? L("EditorMoreTools") : L("EditorActions"), palette, transparency);
+                if (palette.IsClaude) LimitToolbarPointerBounds(strip);
             }
             RefreshState();
             UiLanguage.ApplyTextDirection(window);
@@ -202,6 +203,33 @@ internal static class EditorChrome
         editor.Resize += (_, _) => LayoutChrome();
         // Child disposal can reset Control.Font to a shared default. Dispose only fonts we own.
         window.Disposed += (_, _) => { titleFont?.Dispose(); statusFont?.Dispose(); };
+    }
+
+    private static void LimitToolbarPointerBounds(ToolStrip strip)
+    {
+        Region? paintedRegion = null;
+        void Update()
+        {
+            if (strip.IsDisposed) return;
+            Region next = new();
+            next.MakeEmpty();
+            foreach (ToolStripItem item in strip.Items.Cast<ToolStripItem>().Append(strip.OverflowButton))
+            {
+                if (!item.Visible || item.GetCurrentParent() != strip || item.Width <= 0 || item.Height <= 0) continue;
+                using GraphicsPath face = EditorToolStripRenderer.CreateFace(item.Size, strip.DeviceDpi / 96f, menu: false);
+                using Matrix position = new();
+                position.Translate(item.Bounds.X, item.Bounds.Y);
+                face.Transform(position);
+                next.Union(face);
+            }
+            Region? previous = paintedRegion;
+            strip.Region = paintedRegion = next;
+            previous?.Dispose();
+        }
+        strip.LayoutCompleted += (_, _) => Update();
+        strip.VisibleChanged += (_, _) => Update();
+        strip.Disposed += (_, _) => paintedRegion?.Dispose();
+        Update();
     }
 }
 
@@ -281,6 +309,13 @@ internal sealed class EditorToolStripRenderer : ToolStripProfessionalRenderer
     }
     private Color Foreground(ToolStripItem item) => PaintingCoverage ? Color.Black : !item.Enabled ? palette.Secondary :
         item.Name == "editorApply" ? palette.AccentText : palette.Text;
+
+    private bool IsTextAction(ToolStripItem item) =>
+        palette.IsClaude && item.GetCurrentParent()?.IsDropDown == false && item is ToolStripButton &&
+        (item.DisplayStyle & ToolStripItemDisplayStyle.Text) != 0;
+
+    private static bool IsHighlightedAction(ToolStripItem item) =>
+        item.Name == "editorApply" || item is ToolStripButton { Checked: true };
     protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e) =>
         e.Graphics.Clear(PaintingCoverage ? Color.White : palette.Background);
     protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e)
@@ -323,6 +358,17 @@ internal sealed class EditorToolStripRenderer : ToolStripProfessionalRenderer
     protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e) => Background(e);
     protected override void OnRenderSplitButtonBackground(ToolStripItemRenderEventArgs e) => Background(e);
     protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e) { }
+
+    private static RectangleF FaceBounds(Size size, float scale, bool menu)
+    {
+        if (menu) return new RectangleF(scale, scale, size.Width - 2 * scale, size.Height - 2 * scale);
+        float height = Math.Min(40 * scale, size.Height - 8 * scale);
+        return new RectangleF(4 * scale, (size.Height - height) / 2, size.Width - 8 * scale, height);
+    }
+
+    internal static GraphicsPath CreateFace(Size size, float scale, bool menu) =>
+        CaptureDrawing.Rounded(FaceBounds(size, scale, menu), (menu ? 7 : 10) * scale);
+
     private void Background(ToolStripItemRenderEventArgs e)
     {
         ToolStripItem item = e.Item;
@@ -338,19 +384,17 @@ internal sealed class EditorToolStripRenderer : ToolStripProfessionalRenderer
         // Selection and transient press share the workspace edit button's pressed tint and normal ink.
         // Keep each theme's own pairing: light blue/dark ink, or dark blue/light ink.
         fill = Mix(fill, palette.Tint, selected);
-        if (item.Name == "editorApply") fill = item.Enabled
-            ? Mix(palette.Accent, palette.AccentText, press * .12f) : palette.Accent;
+        if (IsTextAction(item)) fill = surface;
+        else if (item.Name == "editorApply") fill = item.Enabled
+            ? Mix(palette.Accent, palette.AccentText, press * .12f) : palette.IsClaude ? palette.Tint : palette.Accent;
         if (PaintingCoverage) fill = item.Name == "editorApply" ? Color.Black : CaptureButtonPainter.Coverage((1 - hover) * (1 - selected) * (1 - press));
         float dpi = (e.ToolStrip?.DeviceDpi ?? 96) / 96f;
-        // WinForms stretches the overflow hit target to the row height; its visible face stays aligned with other tools.
-        float height = Math.Min(40 * dpi, item.Height - 8 * dpi);
-        RectangleF rect = menu ? new RectangleF(dpi, dpi, item.Width - 2 * dpi, item.Height - 2 * dpi) :
-            new RectangleF(4 * dpi, (item.Height - height) / 2, item.Width - 8 * dpi, height);
+        RectangleF rect = FaceBounds(item.Size, dpi, menu);
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        if (!menu && PaintingShadows && state != null)
+        if (!menu && PaintingShadows && state != null && !palette.IsClaude)
             state.Elevation.Paint(e.Graphics, item.Size, rect, 10 * dpi, dpi, palette.Background.GetBrightness() < .5f,
                 item.Enabled ? hover * (1 - press) : 0);
-        using GraphicsPath path = CaptureDrawing.Rounded(rect, (menu ? 7 : 10) * dpi);
+        using GraphicsPath path = CreateFace(item.Size, dpi, menu);
         using SolidBrush brush = new(fill);
         e.Graphics.FillPath(brush, path);
         if (menu && item is ToolStripMenuItem { Checked: true, Tag: Color })
@@ -360,13 +404,28 @@ internal sealed class EditorToolStripRenderer : ToolStripProfessionalRenderer
         if (SystemInformation.HighContrast || keyboardFocus)
         {
             using Pen pen = new(PaintingCoverage ? Color.Black : keyboardFocus ? palette.Accent : palette.Border);
-            e.Graphics.DrawPath(pen, path);
+            if (palette.IsClaude) CaptureDrawing.DrawInsideBorder(e.Graphics, rect, (menu ? 7 : 10) * dpi, pen.Color, dpi);
+            else e.Graphics.DrawPath(pen, path);
         }
     }
     protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
     {
         e.TextColor = Foreground(e.Item);
         e.TextFormat |= UiLanguage.TextDirection;
+        if (IsTextAction(e.Item) && e.TextFont != null)
+        {
+            float scale = (e.Item.GetCurrentParent()?.DeviceDpi ?? 96) / 96f;
+            int inset = (int)MathF.Round(4 * scale);
+            Rectangle caption = new(inset, 0, e.Item.Width - 2 * inset, e.Item.Height);
+            float emphasis = e.Item.Enabled && states.TryGetValue(e.Item, out Feedback? state)
+                ? Math.Max(state.Hover.Value, state.Press.Value) : 0;
+            Color ink = PaintingCoverage ? Color.Black : !e.Item.Enabled ? palette.Secondary : IsHighlightedAction(e.Item) ?
+                palette.Accent : CaptureDrawing.Blend(e.TextColor, palette.Accent, emphasis);
+            CaptureDrawing.DrawUnderlinedText(e.Graphics, e.Text, e.TextFont, caption, ink,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding |
+                TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | UiLanguage.TextDirection, scale, emphasis);
+            return;
+        }
         Rectangle textBounds = e.TextRectangle;
         if (e.Item.GetCurrentParent() is { IsDropDown: true } menu && e.Item is not ToolStripControlHost)
         {
@@ -419,6 +478,7 @@ internal sealed class EditorToolStripRenderer : ToolStripProfessionalRenderer
     }
     protected override void OnRenderItemImage(ToolStripItemImageRenderEventArgs e)
     {
+        if (IsTextAction(e.Item)) return;
         Rectangle imageBounds = e.ImageRectangle;
         if (e.Item.GetCurrentParent() is { IsDropDown: true } menu)
             imageBounds = EditorMenuLayout.IconBounds(e.Item, menu.DeviceDpi);

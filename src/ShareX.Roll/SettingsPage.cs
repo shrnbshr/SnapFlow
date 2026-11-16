@@ -10,7 +10,7 @@ namespace ShareX.Roll;
 internal sealed class SettingsPage : UserControl, IBackdropCachingScope
 {
     internal event EventHandler? ReturnRequested;
-    internal event Action<AppearanceMode>? AppearancePreview;
+    internal event Action<CapturePalette>? AppearancePreview;
     internal event Action<bool>? MotionPreview;
     internal event Action<bool>? TransparencyPreview;
     private readonly ApplicationPreferences draft;
@@ -24,7 +24,7 @@ internal sealed class SettingsPage : UserControl, IBackdropCachingScope
     private readonly TableLayoutPanel footer;
     private readonly TableLayoutPanel scrollCanvas = new BackgroundLayout { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 1, Margin = Padding.Empty };
     private bool arrangingPage, initializing = true, restoring;
-    private readonly Label feedback = new() { Name = "settingsFeedback", AutoSize = true, Dock = DockStyle.Fill, Tag = "secondary", Margin = new Padding(0, 10, 0, 8) };
+    private readonly DescriptionLabel feedback = new() { Name = "settingsFeedback", AutoSize = true, Dock = DockStyle.Fill, Tag = "secondary", Margin = new Padding(0, 10, 0, 8) };
     private readonly Button save = ActionButton("saveSettingsButton", L("SaveReturn"), 124);
     private readonly Button cancel = ActionButton("cancelSettingsButton", L("Cancel"), 76);
     private readonly SettingsViewport scroller = new() { AutoScroll = true, Margin = Padding.Empty };
@@ -37,7 +37,8 @@ internal sealed class SettingsPage : UserControl, IBackdropCachingScope
     private readonly List<ModeGlyph> glyphs = new();
     private readonly MotionToggle motion = new() { Name = "animationsToggle", Size = new Size(46, 28), AccessibleName = L("Motion") };
     private readonly MotionToggle transparency = new() { Name = "transparencyToggle", Size = new Size(46, 28), AccessibleName = L("Transparency") };
-    private readonly Label transparencyHint = new() { Name = "transparencyHint", AutoSize = true, Tag = "secondary", Margin = new Padding(0, 2, 0, 0) };
+    private readonly DescriptionLabel transparencyHint = new() { Name = "transparencyHint", AutoSize = true, Tag = "secondary", Margin = new Padding(0, 2, 0, 0) };
+    private readonly SettingsChoice style = new() { Name = "softwareStyleSelector", Width = 220, DropDownWidth = 220 };
     private readonly SettingsChoice language = new() { Name = "languageSelector", Width = 220, DropDownWidth = 380, MaxDropDownItems = 12, Anchor = AnchorStyles.Right, Margin = Padding.Empty };
 
     internal SettingsPage(ApplicationPreferences preferences, ScrollingCaptureOptions scrollingOptions, Func<ApplicationPreferences, ScrollingCaptureOptions, string?> savePreferences)
@@ -60,8 +61,8 @@ internal sealed class SettingsPage : UserControl, IBackdropCachingScope
         heading = new() { Name = "heading", Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, RowCount = 1, Margin = Padding.Empty };
         heading.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         FlowLayoutPanel title = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoSize = true, Margin = Padding.Empty };
-        title.Controls.Add(new Label { Text = L("Settings"), Font = new Font(Font.FontFamily, 18, FontStyle.Bold), AutoSize = true, Margin = new Padding(0, 0, 0, 5) });
-        title.Controls.Add(new Label { Text = L("SettingsSubtitle"), AutoSize = true, Tag = "secondary", Margin = Padding.Empty });
+        title.Controls.Add(new Label { Name = "settingsTitle", Text = L("Settings"), Font = new Font(Font.FontFamily, 18, FontStyle.Bold), AutoSize = true, Margin = new Padding(0, 0, 0, 5) });
+        title.Controls.Add(new DescriptionLabel { Text = L("SettingsSubtitle"), AutoSize = true, Tag = "secondary", Margin = Padding.Empty });
         title.SizeChanged += (_, _) => WrapLabels(title, title.ClientSize.Width);
         heading.Controls.Add(title, 0, 0);
 
@@ -82,6 +83,19 @@ internal sealed class SettingsPage : UserControl, IBackdropCachingScope
             section.Controls.Add(control, 0, row);
         }
         Add(SectionHeading(L("Appearance"), ""));
+        SettingsGroup styleRow = new() { Name = "softwareStyleRow", Dock = DockStyle.Top };
+        SettingsLayout.ConfigureOption(styleRow, new Label { Text = Localization.Strings.SoftwareStyle }, new Label { Visible = false }, style);
+        SettingsLayout.SetBottomGap(styleRow);
+        style.AccessibleName = Localization.Strings.SoftwareStyle;
+        style.Items.AddRange([Localization.Strings.SoftwareStyleDefault, Localization.Strings.SoftwareStyleClaude]);
+        style.SelectedIndex = (int)draft.Style;
+        style.SelectedIndexChanged += (_, _) =>
+        {
+            if (style.SelectedIndex < 0 || restoring) return;
+            draft.Style = (SoftwareStyle)style.SelectedIndex;
+            PreviewAppearance();
+        };
+        Add(styleRow);
         TableLayoutPanel appearance = new() { Name = "appearanceOptions", ColumnCount = 5, RowCount = 1, Dock = DockStyle.Top, Height = 88, Margin = new Padding(0, 0, 0, SettingsLayout.Gap) };
         for (int i = 0; i < 3; i++)
         {
@@ -99,10 +113,7 @@ internal sealed class SettingsPage : UserControl, IBackdropCachingScope
             {
                 if (!option.Checked) return;
                 draft.Appearance = mode;
-                if (restoring) return;
-                ShowFeedback(L("AppearancePreview"));
-                if (AppearancePreview is { } preview) preview(mode);
-                else RefreshSystemAppearance();
+                if (!restoring) PreviewAppearance();
             };
             themes.Add(mode, option);
             appearance.Controls.Add(option, i * 2, 0);
@@ -124,11 +135,16 @@ internal sealed class SettingsPage : UserControl, IBackdropCachingScope
             ShowFeedback(L("TransparencyPreview"));
         };
         foreach (Control caption in new Control[] { transparencyCaption, transparencyTitle, transparencyHint })
-            caption.Click += (_, _) => { transparency.Focus(); transparency.Checked = !transparency.Checked; };
+            caption.Click += (_, _) =>
+            {
+                if (!transparency.Enabled) return;
+                transparency.Focus();
+                transparency.Checked = !transparency.Checked;
+            };
         Add(transparencyRow);
         SettingsGroup motionRow = new() { Name = "motionRow", Dock = DockStyle.Top };
         SettingsLayout.ConfigureOption(motionRow, new Label { Text = L("Motion") },
-            new Label { Text = L("MotionHint"), Tag = "secondary", Font = new Font(Font.FontFamily, 10) }, motion);
+            new DescriptionLabel { Text = L("MotionHint"), Tag = "secondary", Font = new Font(Font.FontFamily, 10) }, motion);
         SettingsLayout.SetBottomGap(motionRow);
         motion.Checked = draft.AnimationsEnabled;
         motion.CheckedChanged += (_, _) =>
@@ -141,7 +157,7 @@ internal sealed class SettingsPage : UserControl, IBackdropCachingScope
         Add(motionRow);
         SettingsGroup languageRow = new() { Name = "languageRow", Dock = DockStyle.Top };
         SettingsLayout.ConfigureOption(languageRow, new Label { Text = L("Language") },
-            new Label { Text = L("LanguageHint"), Tag = "secondary", Font = new Font(Font.FontFamily, 10) }, language);
+            new DescriptionLabel { Text = L("LanguageHint"), Tag = "secondary", Font = new Font(Font.FontFamily, 10) }, language);
         SettingsLayout.SetBottomGap(languageRow, SettingsLayout.SectionGap);
         language.Items.AddRange(UiLanguage.Options.Cast<object>().ToArray());
         language.AccessibleName = L("Language");
@@ -155,7 +171,7 @@ internal sealed class SettingsPage : UserControl, IBackdropCachingScope
         Add(SectionHeading(L("Saving"), ""));
         saveLocation = new SaveLocationOptions(draft) { Dock = DockStyle.Top };
         SettingsLayout.SetBottomGap(saveLocation);
-        SettingsLayout.MatchOptionHeights(this, transparencyRow, motionRow, languageRow, saveLocation.Header);
+        SettingsLayout.MatchOptionHeights(this, styleRow, transparencyRow, motionRow, languageRow, saveLocation.Header);
         saveLocation.Changed += (_, _) => ShowFeedback(L("Unsaved"));
         Add(saveLocation);
         SettingsGroup scrollingRow = new() { Name = "scrollingOptionsRow", DrawDividers = false, Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, RowCount = 2, Padding = Padding.Empty, Margin = new Padding(0, 0, 0, SettingsLayout.SectionGap) };
@@ -239,7 +255,7 @@ internal sealed class SettingsPage : UserControl, IBackdropCachingScope
             shortcuts.Controls.Add(row, 0, index++);
         }
         Add(shortcuts);
-        Add(new Label
+        Add(new DescriptionLabel
         {
             Text = L("SupportedKeys"),
             AutoSize = true, Dock = DockStyle.Top, Tag = "secondary", Font = new Font(Font.FontFamily, 10),
@@ -274,6 +290,7 @@ internal sealed class SettingsPage : UserControl, IBackdropCachingScope
             ApplicationPreferences defaults = new();
             foreach (CaptureShortcut action in ApplicationPreferences.Actions) recorders[action.Kind].SetShortcut(defaults.Shortcuts[action.Kind]);
             themes[defaults.Appearance].Checked = true;
+            style.SelectedIndex = (int)defaults.Style;
             motion.Checked = defaults.AnimationsEnabled;
             transparency.Checked = defaults.TransparencyEnabled;
             language.SelectedItem = UiLanguage.Options.Single(option => option.Mode == defaults.Language);
@@ -360,7 +377,7 @@ internal sealed class SettingsPage : UserControl, IBackdropCachingScope
         FlowLayoutPanel heading = new() { AutoSize = true, Dock = DockStyle.Top, WrapContents = true, Margin = new Padding(0, 0, 0, 12) };
         heading.SizeChanged += (_, _) => WrapLabels(heading, heading.ClientSize.Width);
         heading.Controls.Add(new Label { Text = title, AutoSize = true, Font = new Font(Font, FontStyle.Bold), Margin = new Padding(0, 0, 16, 0) });
-        heading.Controls.Add(new Label { Text = hint, AutoSize = true, Tag = "secondary", Font = new Font(Font.FontFamily, 10), Margin = new Padding(0, 2, 0, 0) });
+        heading.Controls.Add(new DescriptionLabel { Text = hint, AutoSize = true, Tag = "secondary", Font = new Font(Font.FontFamily, 10), Margin = new Padding(0, 2, 0, 0) });
         return heading;
     }
 
@@ -399,6 +416,7 @@ internal sealed class SettingsPage : UserControl, IBackdropCachingScope
         try
         {
             draft.Appearance = preferences.Appearance;
+            draft.Style = preferences.Style;
             draft.AnimationsEnabled = preferences.AnimationsEnabled;
             draft.TransparencyEnabled = preferences.TransparencyEnabled;
             draft.Language = preferences.Language;
@@ -408,6 +426,7 @@ internal sealed class SettingsPage : UserControl, IBackdropCachingScope
             foreach (CaptureShortcut action in ApplicationPreferences.Actions)
                 recorders[action.Kind].SetShortcut(preferences.Shortcuts[action.Kind]);
             themes[preferences.Appearance].Checked = true;
+            style.SelectedIndex = (int)draft.Style;
             motion.Checked = preferences.AnimationsEnabled;
             transparency.Checked = preferences.TransparencyEnabled;
             language.SelectedItem = UiLanguage.Options.Single(option => option.Mode == preferences.Language);
@@ -430,14 +449,26 @@ internal sealed class SettingsPage : UserControl, IBackdropCachingScope
 
     internal void RefreshSystemAppearance()
     {
-        transparencyHint.Text = L(WindowBackdrop.IsSupported() ? "TransparencyHint" : "TransparencyUnavailable");
+        transparency.Enabled = draft.Style != SoftwareStyle.Claude;
+        transparencyHint.Text = transparency.Enabled
+            ? L(WindowBackdrop.IsSupported() ? "TransparencyHint" : "TransparencyUnavailable")
+            : Localization.Strings.SoftwareStyleSolid;
         transparency.AccessibleDescription = transparencyHint.Text;
         EndScrollingReveal();
         UiMotion.UserEnabled = draft.AnimationsEnabled;
-        CapturePalette palette = CapturePalette.For(draft.Appearance);
+        CapturePalette palette = PreviewPalette;
         SettingsColors.Apply(this, palette, save, () => draft.TransparencyEnabled);
         scrollHost.ApplyPalette(palette);
         foreach (ModeGlyph glyph in glyphs) { glyph.Ink = palette.Secondary; glyph.Invalidate(); }
+    }
+
+    internal CapturePalette PreviewPalette => CapturePalette.For(draft.Appearance, draft.Style);
+
+    private void PreviewAppearance()
+    {
+        ShowFeedback(L("AppearancePreview"));
+        if (AppearancePreview is { } preview) preview(PreviewPalette);
+        else RefreshSystemAppearance();
     }
 
     private void ArrangePage()
@@ -548,7 +579,9 @@ internal sealed class SettingsPage : UserControl, IBackdropCachingScope
 internal sealed class SettingsGroup : TableLayoutPanel
 {
     internal bool DrawDividers { get; set; }
+    internal bool IsOptionRow { get; set; }
     internal CapturePalette Palette { get; set; } = CapturePalette.Light;
+    internal Color SurfaceColor => Palette.IsClaude && IsOptionRow ? Palette.Background : Palette.Surface;
     internal SettingsGroup() { DoubleBuffered = true; ResizeRedraw = true; }
     protected override void OnPaintBackground(PaintEventArgs e) => PaintSurface(e.Graphics);
 
@@ -564,11 +597,20 @@ internal sealed class SettingsGroup : TableLayoutPanel
     {
         g.SmoothingMode = SmoothingMode.AntiAlias;
         g.Clear(Palette.Background);
-        using GraphicsPath path = CaptureDrawing.Rounded(new RectangleF(.5f, .5f, Width - 1, Height - 1), 16 * DeviceDpi / 96f);
-        using SolidBrush brush = new(Palette.Surface);
         using Pen pen = new(Palette.Border);
+        if (Palette.IsClaude && IsOptionRow)
+        {
+            g.DrawLine(pen, Padding.Left, Height - 1, Width - Padding.Right, Height - 1);
+            return;
+        }
+        float scale = DeviceDpi / 96f;
+        RectangleF bounds = Palette.IsClaude ? ClientRectangle : new RectangleF(.5f, .5f, Width - 1, Height - 1);
+        float radius = (Palette.IsClaude ? 10 : 16) * scale;
+        using GraphicsPath path = CaptureDrawing.Rounded(bounds, radius);
+        using SolidBrush brush = new(Palette.Surface);
         g.FillPath(brush, path);
-        if (SystemInformation.HighContrast) g.DrawPath(pen, path);
+        if (Palette.IsClaude) CaptureDrawing.DrawInsideBorder(g, bounds, radius, Palette.Border, scale);
+        else if (SystemInformation.HighContrast) g.DrawPath(pen, path);
         if (!DrawDividers) return;
         int y = Padding.Top;
         foreach (int height in GetRowHeights().Take(RowCount - 1))
@@ -609,6 +651,8 @@ internal sealed class ThemeOption : RadioButton
     protected override void OnMouseEnter(EventArgs e) { hover.SpringTo(1, ButtonElevation.ResponseMilliseconds); base.OnMouseEnter(e); }
     protected override void OnMouseLeave(EventArgs e) { hover.SpringTo(0, ButtonElevation.ResponseMilliseconds); base.OnMouseLeave(e); }
     protected override void OnCheckedChanged(EventArgs e) { base.OnCheckedChanged(e); selection?.SpringTo(Checked ? 1 : 0); Invalidate(); }
+    protected override void OnGotFocus(EventArgs e) { base.OnGotFocus(e); Invalidate(); }
+    protected override void OnLostFocus(EventArgs e) { base.OnLostFocus(e); Invalidate(); }
     internal void PaintBackdrop(Graphics graphics)
     {
         float scale = DeviceDpi / 96f;
@@ -632,18 +676,27 @@ internal sealed class ThemeOption : RadioButton
         g.SmoothingMode = SmoothingMode.AntiAlias;
         g.Clear(p.Background);
         RectangleF face = ButtonElevation.CompactFaceBounds(ClientSize, s);
-        elevation.PaintShadow(g, ClientSize, s, p.Background.GetBrightness() < .5f, Enabled ? hover.Value : 0, compact: true, unified: true);
-        using GraphicsPath card = CaptureDrawing.Rounded(face, ButtonElevation.CompactRadius(face, s));
+        elevation.PaintShadow(g, ClientSize, s, p.Background.GetBrightness() < .5f, Enabled && !p.IsClaude ? hover.Value : 0, compact: true, unified: true);
+        float radius = p.IsClaude ? 8 * s : ButtonElevation.CompactRadius(face, s);
+        using GraphicsPath card = CaptureDrawing.Rounded(face, radius);
         using SolidBrush fill = new(CaptureDrawing.Blend(CaptureDrawing.Blend(p.Surface, ButtonElevation.Surface(p), hover.Value), p.Tint, selection.Value));
         g.FillPath(fill, card);
-        if (Focused && ShowFocusCues || SystemInformation.HighContrast)
+        bool focused = Focused && ShowFocusCues;
+        Color edgeColor = Checked || focused ? p.Accent : p.Border;
+        if (p.IsClaude) CaptureDrawing.DrawInsideBorder(g, face, radius, edgeColor, (focused ? 1.75f : 1) * s);
+        else if (focused || SystemInformation.HighContrast)
         {
-            using Pen edge = new(Checked || Focused ? p.Accent : p.Border, 1.75f * s);
+            using Pen edge = new(edgeColor, 1.75f * s);
             g.DrawPath(edge, card);
         }
+        if (p.IsClaude && TextRenderer.MeasureText(Text, Font).Width + 92 * s > face.Width)
+        {
+            TextRenderer.DrawText(g, Text, Font, Rectangle.Round(face), p.Text,
+                TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter | TextFormatFlags.EndEllipsis | UiLanguage.TextDirection);
+            return;
+        }
         RectangleF mini = new(face.Left + ButtonSpacing.Horizontal * s, (Height - 40 * s) / 2, 54 * s, 40 * s);
-        CapturePalette sample = Mode == AppearanceMode.Dark ? CapturePalette.Dark : CapturePalette.Light;
-        if (SystemInformation.HighContrast) sample = p;
+        CapturePalette sample = CapturePalette.For(Mode == AppearanceMode.Dark ? AppearanceMode.Dark : AppearanceMode.Light, p.Style);
         using SolidBrush window = new(sample.Canvas);
         using SolidBrush bar = new(sample.Surface);
         using Pen line = new(sample.Border, s);
@@ -651,11 +704,11 @@ internal sealed class ThemeOption : RadioButton
         g.FillRectangle(bar, mini.X, mini.Y, mini.Width, 10 * s);
         if (Mode == AppearanceMode.System && !SystemInformation.HighContrast)
         {
-            using SolidBrush dark = new(CapturePalette.Dark.Surface);
+            using SolidBrush dark = new(CapturePalette.For(AppearanceMode.Dark, p.Style).Surface);
             g.FillRectangle(dark, mini.X + mini.Width / 2, mini.Y, mini.Width / 2, mini.Height);
         }
-        // Outline the miniature only; the surrounding option card keeps its borderless style.
-        g.DrawRectangle(line, mini.X + s / 2, mini.Y + s / 2, mini.Width - s, mini.Height - s);
+        if (p.IsClaude) CaptureDrawing.DrawInsideBorder(g, mini, 0, sample.Border, s);
+        else g.DrawRectangle(line, mini.X + s / 2, mini.Y + s / 2, mini.Width - s, mini.Height - s);
         using SolidBrush accent = new(p.Accent);
         g.FillRectangle(accent, mini.X + 7 * s, mini.Y + 17 * s, 12 * s, 14 * s);
         g.DrawLine(line, mini.X + 25 * s, mini.Y + 19 * s, mini.Right - 6 * s, mini.Y + 19 * s);
@@ -749,14 +802,15 @@ internal sealed class ShortcutRecorder : Button
         g.SmoothingMode = SmoothingMode.AntiAlias;
         g.Clear(p.Surface);
         RectangleF face = ButtonElevation.CompactFaceBounds(ClientSize, s);
-        elevation.PaintShadow(g, ClientSize, s, p.Background.GetBrightness() < .5f, Enabled && !pressed ? hover.Value : 0, compact: true, unified: true);
+        elevation.PaintShadow(g, ClientSize, s, p.Background.GetBrightness() < .5f, Enabled && !pressed && !p.IsClaude ? hover.Value : 0, compact: true, unified: true);
         using GraphicsPath field = CaptureDrawing.Rounded(face, ButtonElevation.CompactRadius(face, s));
         using SolidBrush background = new(recording || pressed ? p.Tint : CaptureDrawing.Blend(p.Canvas, ButtonElevation.Surface(p), hover.Value));
         g.FillPath(background, field);
         if (recording || Focused && ShowFocusCues || SystemInformation.HighContrast)
         {
             using Pen edge = new(recording || Focused ? p.Accent : p.Border, 1.5f * s);
-            g.DrawPath(edge, field);
+            if (p.IsClaude) CaptureDrawing.DrawInsideBorder(g, face, ButtonElevation.CompactRadius(face, s), edge.Color, edge.Width);
+            else g.DrawPath(edge, field);
         }
         Rectangle textBounds = Rectangle.Round(face);
         textBounds.Inflate(-(int)Math.Round(ButtonSpacing.Horizontal * s), 0);
@@ -805,7 +859,7 @@ internal sealed class ShortcutClearButton : Button
         g.Clear(Parent?.BackColor ?? p.Surface);
         g.SmoothingMode = SmoothingMode.AntiAlias;
         RectangleF face = ButtonElevation.CompactFaceBounds(ClientSize, s);
-        elevation.PaintShadow(g, ClientSize, s, p.Background.GetBrightness() < .5f, Enabled && !pressed ? hover.Value : 0, compact: true, unified: true);
+        elevation.PaintShadow(g, ClientSize, s, p.Background.GetBrightness() < .5f, Enabled && !pressed && !p.IsClaude ? hover.Value : 0, compact: true, unified: true);
         using GraphicsPath shape = CaptureDrawing.Rounded(face, ButtonElevation.CompactRadius(face, s));
         if (Enabled && (hover.Value > 0 || pressed))
         {
@@ -815,7 +869,8 @@ internal sealed class ShortcutClearButton : Button
         if (Enabled && (Focused && ShowFocusCues || SystemInformation.HighContrast))
         {
             using Pen focus = new(p.Accent, 1.5f * s);
-            g.DrawPath(focus, shape);
+            if (p.IsClaude) CaptureDrawing.DrawInsideBorder(g, face, ButtonElevation.CompactRadius(face, s), focus.Color, focus.Width);
+            else g.DrawPath(focus, shape);
         }
         Color ink = !Enabled && !SystemInformation.HighContrast ? CaptureDrawing.Blend(p.Surface, p.Secondary, .45f) :
             CaptureDrawing.Blend(p.Secondary, p.Text, pressed ? 1 : hover.Value);

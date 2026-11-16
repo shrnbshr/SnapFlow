@@ -88,6 +88,7 @@ internal sealed class SettingsNumberField : Control
     {
         palette = value;
         BackColor = Parent?.BackColor ?? value.Surface;
+        ButtonPointerBounds.ApplyInset(this, value.IsClaude, 10);
         number.BackColor = value.Canvas;
         number.ForeColor = value.Text;
         foreach (Control child in number.Controls)
@@ -136,11 +137,13 @@ internal sealed class SettingsNumberField : Control
         float s = DeviceDpi / 96f;
         using (SolidBrush background = new(Parent?.BackColor ?? palette.Surface)) g.FillRectangle(background, ClientRectangle);
         g.SmoothingMode = SmoothingMode.AntiAlias;
-        using GraphicsPath shape = CaptureDrawing.Rounded(new RectangleF(s, s, Width - 2 * s, Height - 2 * s), 10 * s);
+        RectangleF face = new(s, s, Width - 2 * s, Height - 2 * s);
+        using GraphicsPath shape = CaptureDrawing.Rounded(face, 10 * s);
         using SolidBrush fill = new(palette.Canvas);
         using Pen edge = new(number.ContainsFocus ? palette.Accent : palette.Border, (number.ContainsFocus ? 1.5f : 1) * s);
         g.FillPath(fill, shape);
-        if (number.ContainsFocus || SystemInformation.HighContrast) g.DrawPath(edge, shape);
+        if (palette.IsClaude && number.ContainsFocus) CaptureDrawing.DrawInsideBorder(g, face, 10 * s, edge.Color, edge.Width);
+        else if (number.ContainsFocus || SystemInformation.HighContrast) g.DrawPath(edge, shape);
         float x = Width - 15 * s;
         using Pen arrow = new(hovering || pressed != 0 ? palette.Text : palette.Secondary, 1.4f * s) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
         float top = Height / 2f - 5 * s, bottom = Height / 2f + 5 * s;
@@ -205,6 +208,7 @@ internal sealed class SettingsChoice : ComboBox
         this.transparencyEnabled = transparencyEnabled;
         BackColor = value.Canvas;
         ForeColor = value.Text;
+        ButtonPointerBounds.ApplyInset(this, value.IsClaude, 10);
         Invalidate();
     }
 
@@ -282,6 +286,8 @@ internal sealed class SettingsChoice : ComboBox
             return;
         }
         base.WndProc(ref message);
+        // The native combo can paint its text slot directly while processing focus or selection.
+        if (message.Msg is 0x7 or 0x8 or 0x14E) RepaintField();
     }
 
     private void PaintField(Graphics g)
@@ -289,11 +295,13 @@ internal sealed class SettingsChoice : ComboBox
         float s = DeviceDpi / 96f;
         using (SolidBrush background = new(Parent?.BackColor ?? palette.Surface)) g.FillRectangle(background, ClientRectangle);
         g.SmoothingMode = SmoothingMode.AntiAlias;
-        using GraphicsPath shape = CaptureDrawing.Rounded(new RectangleF(s, s, Width - 2 * s, Height - 2 * s), 10 * s);
+        RectangleF face = new(s, s, Width - 2 * s, Height - 2 * s);
+        using GraphicsPath shape = CaptureDrawing.Rounded(face, 10 * s);
         using SolidBrush fill = new(hovering ? palette.Hover : palette.Canvas);
         using Pen edge = new(Focused || menu?.Visible == true ? palette.Accent : palette.Border, (Focused ? 1.5f : 1) * s);
         g.FillPath(fill, shape);
-        if (Focused && ShowFocusCues || menu?.Visible == true || SystemInformation.HighContrast) g.DrawPath(edge, shape);
+        if (palette.IsClaude) CaptureDrawing.DrawInsideBorder(g, face, 10 * s, edge.Color, edge.Width);
+        else if (Focused && ShowFocusCues || menu?.Visible == true || SystemInformation.HighContrast) g.DrawPath(edge, shape);
         TextRenderer.DrawText(g, Text, Font, new Rectangle((int)(ButtonSpacing.Horizontal * s), 0, Math.Max(0, Width - (int)((ButtonSpacing.Horizontal + 34) * s)), Height), Enabled ? palette.Text : palette.Secondary,
             TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.PreserveGraphicsClipping | TextFormatFlags.PreserveGraphicsTranslateTransform | UiLanguage.TextDirection);
         float x = Width - 15 * s, y = Height / 2f;
@@ -305,7 +313,14 @@ internal sealed class SettingsChoice : ComboBox
     protected override void OnMouseLeave(EventArgs e) { base.OnMouseLeave(e); hovering = false; Invalidate(); }
     protected override void OnGotFocus(EventArgs e) { base.OnGotFocus(e); Invalidate(); }
     protected override void OnLostFocus(EventArgs e) { base.OnLostFocus(e); Invalidate(); }
-    protected override void OnSelectedIndexChanged(EventArgs e) { base.OnSelectedIndexChanged(e); Invalidate(); }
+    protected override void OnSelectedIndexChanged(EventArgs e) { base.OnSelectedIndexChanged(e); RepaintField(); }
+
+    private void RepaintField()
+    {
+        if (IsDisposed || !IsHandleCreated || !Visible) return;
+        Invalidate();
+        Update();
+    }
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
         if (keyData is Keys.F4 or (Keys.Alt | Keys.Down) or Keys.Space) { ToggleMenu(); return true; }

@@ -5,6 +5,7 @@ using Newtonsoft.Json;
 namespace ShareX.Roll;
 
 internal enum AppearanceMode { System, Light, Dark }
+internal enum SoftwareStyle { Default, Claude }
 
 internal sealed record CaptureShortcut(string Kind, string TitleKey, Keys ModeKey)
 {
@@ -20,6 +21,7 @@ internal sealed class ApplicationPreferences
     ];
 
     public AppearanceMode Appearance { get; set; } = AppearanceMode.System;
+    public SoftwareStyle Style { get; set; } = SoftwareStyle.Default;
     public bool AnimationsEnabled { get; set; } = true;
     public bool TransparencyEnabled { get; set; } = true;
     public LanguageMode Language { get; set; } = LanguageMode.System;
@@ -31,7 +33,7 @@ internal sealed class ApplicationPreferences
 
     internal ApplicationPreferences Clone() => new()
     {
-        Appearance = Appearance, AnimationsEnabled = AnimationsEnabled, TransparencyEnabled = TransparencyEnabled, Language = Language,
+        Appearance = Appearance, Style = Style, AnimationsEnabled = AnimationsEnabled, TransparencyEnabled = TransparencyEnabled, Language = Language,
         UseDefaultSaveFolder = UseDefaultSaveFolder, DefaultSaveFolder = DefaultSaveFolder, Shortcuts = new(Shortcuts)
     };
 
@@ -56,6 +58,7 @@ internal sealed class ApplicationPreferences
             ? JsonConvert.DeserializeObject<ApplicationPreferences>(File.ReadAllText(path)) ?? throw new JsonException(L("EmptySettings"))
             : new();
         if (!Enum.IsDefined(value.Appearance) || value.Shortcuts == null) throw new JsonException(L("InvalidSettings"));
+        if (!Enum.IsDefined(value.Style)) value.Style = SoftwareStyle.Default;
         value.DefaultSaveFolder ??= "";
         // Migrate retired language IDs without discarding shortcuts, theme or motion preferences.
         if ((int)value.Language is >= 4 and <= 24) value.Language = LanguageMode.System;

@@ -5,6 +5,10 @@ namespace ShareX.Roll.Localization;
 
 internal static class Strings
 {
+    internal static string SoftwareStyle => UiText.L("SoftwareStyle");
+    internal static string SoftwareStyleDefault => UiText.L("SoftwareStyleDefault");
+    internal static string SoftwareStyleClaude => UiText.L("SoftwareStyleClaude");
+    internal static string SoftwareStyleSolid => UiText.L("SoftwareStyleSolid");
     internal static string PreviewZoomControls => UiText.L("PreviewZoomControls");
     internal static string PreviewZoomOut => UiText.L("PreviewZoomOut");
     internal static string PreviewZoomIn => UiText.L("PreviewZoomIn");
