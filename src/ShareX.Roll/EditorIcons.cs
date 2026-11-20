@@ -15,7 +15,7 @@ internal static class EditorIcons
         ShapeType.DrawingSticker or ShapeType.DrawingImage or ShapeType.DrawingImageScreen) || item.Name is
         "editorApply" or "editorSave" or "editorSaveAs" or "editorCopy" or "editorStyle" or "editorEditMenu" or
         "editorUndo" or "editorRedo" or "editorPaste" or "editorDuplicate" or "editorDelete" or "editorDeleteAll" or
-        "editorMoveTop" or "editorMoveUp" or "editorMoveDown" or "editorMoveBottom";
+        "editorMoveTop" or "editorMoveUp" or "editorMoveDown" or "editorMoveBottom" or "tsbEditStickers";
 
     internal static void Draw(Graphics g, Rectangle bounds, ShapeType? type, string name, Color ink)
     {
@@ -81,7 +81,7 @@ internal static class EditorIcons
                     g.DrawPolygon(p, [new PointF(3, 2), new(14, 2), new(18, 6), new(18, 18), new(3, 18)]);
                     g.DrawRectangle(p, 6, 2, 7, 5); g.DrawRectangle(p, 6, 11, 9, 7);
                 }
-                else if (name == "settings")
+                else if (name is "settings" or "tsbEditStickers")
                 {
                     PointF[] teeth = new PointF[32];
                     for (int i = 0; i < teeth.Length; i++)

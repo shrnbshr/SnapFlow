@@ -66,6 +66,7 @@ internal static class Program
                 else if (args.Contains("--button-hover")) await ButtonHoverRegression.RunAsync(main, args.Contains("--baseline"), args.Contains("--all-button-types"));
                 else if (args.Contains("--transparency-startup")) TransparencySettingsRegression.VerifyStartup(main, !args.Contains("--expected-off"));
                 else if (args.Contains("--software-style")) await SoftwareStyleRegression.RunAsync(main);
+                else if (args.Contains("--software-style-dpi")) await SoftwareStyleRegression.RunIntermediateDpiAsync(main);
                 else if (args.Contains("--theme-transition")) await ThemeTransitionRegression.RunAsync(main);
                 else if (args.Contains("--transparency-flicker")) await TransparencyFlickerRegression.RunAsync(main, args.Contains("--baseline"));
                 else if (args.Contains("--transparency-settings")) await TransparencySettingsRegression.RunAsync(main);
@@ -96,6 +97,9 @@ internal static class Program
                 else if (args.Contains("--annotation")) await AnnotationRegression.RunAsync(main);
                 else if (args.Contains("--crop-viewport")) await BoundaryCropRegression.RunViewportAsync(main);
                 else if (args.Contains("--preview-actions")) await PreviewActionLayoutRegression.RunAsync(main);
+                else if (args.Contains("--editor-text-dialog")) await EditorTextDialogRegression.RunAsync(main);
+                else if (args.Contains("--owned-dialogs")) await OwnedDialogRegression.RunAsync(main);
+                else if (args.Contains("--editor-close-dialog")) await OwnedDialogRegression.VerifyCloseAsync(main);
                 else if (args.Contains("--editor-options")) await EditorOptionsRegression.RunAsync(main);
                 else if (args.Contains("--editor-effects")) await EditorEffectsRegression.RunAsync(main);
                 else if (args.Contains("--editor-backdrop")) await EditorBackdropRegression.RunAsync(main);

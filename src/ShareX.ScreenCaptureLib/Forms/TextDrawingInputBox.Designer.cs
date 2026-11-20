@@ -33,7 +33,7 @@
             this.txtInput = new System.Windows.Forms.TextBox();
             this.flpProperties = new System.Windows.Forms.FlowLayoutPanel();
             this.lblFont = new System.Windows.Forms.Label();
-            this.cbFonts = new System.Windows.Forms.ComboBox();
+            this.cbFonts = new TextFontChoice();
             this.lblTextSize = new System.Windows.Forms.Label();
             this.nudTextSize = new System.Windows.Forms.NumericUpDown();
             this.btnTextColor = new ShareX.HelpersLib.ColorButton();
@@ -390,7 +390,7 @@
         private System.Windows.Forms.CheckBox cbItalic;
         private System.Windows.Forms.CheckBox cbUnderline;
         private System.Windows.Forms.Label lblFont;
-        private System.Windows.Forms.ComboBox cbFonts;
+        private TextFontChoice cbFonts;
         private System.Windows.Forms.Button btnAlignmentHorizontal;
         private System.Windows.Forms.Button btnAlignmentVertical;
         private System.Windows.Forms.ContextMenuStrip cmsAlignmentHorizontal;

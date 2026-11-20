@@ -54,23 +54,42 @@ internal sealed class MotionToggle : CheckBox
         g.Clear(Parent?.BackColor ?? p.Surface);
         RectangleF bounds = TrackBounds(ClientSize, s);
         using GraphicsPath track = CaptureDrawing.Rounded(bounds, 12 * s);
-        Color off = CaptureDrawing.Blend(p.Secondary, p.Surface, .12f);
-        Color trackColor = CaptureDrawing.Blend(off, p.Accent, position.Value);
-        if (!Enabled) trackColor = CaptureDrawing.Blend(trackColor, p.Surface, .45f);
-        using SolidBrush fill = new(CaptureDrawing.Blend(trackColor, p.Text, hover.Value * .06f));
+        Color trackColor, thumbColor;
+        if (p.IsClaude)
+        {
+            Color off = CaptureDrawing.Blend(p.Surface, p.Hover, Enabled ? hover.Value * .4f : 0);
+            trackColor = Enabled ? CaptureDrawing.Blend(off, p.Accent, position.Value) : off;
+            thumbColor = Enabled ? CaptureDrawing.Blend(p.Secondary, p.AccentText, position.Value) :
+                CaptureDrawing.Blend(p.FieldBorder, p.Surface, .38f);
+        }
+        else
+        {
+            Color off = CaptureDrawing.Blend(p.Secondary, p.Surface, .12f);
+            trackColor = CaptureDrawing.Blend(off, p.Accent, position.Value);
+            if (!Enabled) trackColor = CaptureDrawing.Blend(trackColor, p.Surface, .45f);
+            trackColor = CaptureDrawing.Blend(trackColor, p.Text, hover.Value * .06f);
+            thumbColor = CaptureDrawing.Blend(p.Surface, p.AccentText, position.Value);
+        }
+        using SolidBrush fill = new(trackColor);
         g.FillPath(fill, track);
         float diameter = 18 * s;
         float thumbWidth = diameter + 3 * s * press.Value;
         float x = bounds.X + 3 * s + position.Value * (bounds.Width - thumbWidth - 6 * s);
-        using SolidBrush thumb = new(CaptureDrawing.Blend(p.Surface, p.AccentText, position.Value));
+        using SolidBrush thumb = new(thumbColor);
         using GraphicsPath knob = CaptureDrawing.Rounded(new RectangleF(x, bounds.Y + 3 * s, thumbWidth, diameter), diameter / 2);
         g.FillPath(thumb, knob);
-        if (Focused && ShowFocusCues)
+        bool focused = Focused && ShowFocusCues;
+        if (p.IsClaude)
+        {
+            Color edge = !Enabled ? p.Border : CaptureDrawing.Blend(p.FieldBorder, p.Accent, position.Value);
+            if (focused) edge = position.Value < .5f ? p.Accent : p.AccentText;
+            CaptureDrawing.DrawInsideBorder(g, bounds, 12 * s, edge, (focused ? 1.5f : 1) * s);
+        }
+        else if (focused)
         {
             RectangleF ringBounds = bounds;
-            float offset = p.IsClaude ? -.75f * s : 1.5f * s;
-            ringBounds.Inflate(offset, offset);
-            using GraphicsPath ring = CaptureDrawing.Rounded(ringBounds, 12 * s + offset);
+            ringBounds.Inflate(1.5f * s, 1.5f * s);
+            using GraphicsPath ring = CaptureDrawing.Rounded(ringBounds, 13.5f * s);
             using Pen focus = new(p.Accent, 1.5f * s);
             g.DrawPath(focus, ring);
         }

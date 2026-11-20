@@ -66,8 +66,7 @@ internal sealed class ScrollingOptionsDialog : Form
         SettingsColors.Apply(this, palette, save, () => transparent);
         host.ApplyPalette(palette);
         UiLanguage.ApplyTextDirection(this);
-        WindowBackdrop backdrop = new(this);
-        HandleCreated += (_, _) => backdrop.Apply(palette, transparent);
+        DialogChrome.ApplyFrame(this, palette, transparent);
         AutoScaleDimensions = new SizeF(96, 96);
         ResumeLayout(true);
     }

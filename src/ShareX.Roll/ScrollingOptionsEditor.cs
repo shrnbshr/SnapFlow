@@ -185,7 +185,9 @@ internal sealed class SettingsDisclosure : Button
         RectangleF face = ButtonElevation.CompactFaceBounds(ClientSize, s);
         elevation.PaintShadow(g, ClientSize, s, Palette.Background.GetBrightness() < .5f, Enabled && !Palette.IsClaude ? hover.Value : 0, compact: true, unified: true);
         using GraphicsPath shape = CaptureDrawing.Rounded(face, ButtonElevation.CompactRadius(face, s));
-        using SolidBrush fill = new(CaptureDrawing.Blend(Parent?.BackColor ?? Palette.Surface, ButtonElevation.Surface(Palette), hover.Value));
+        float emphasis = Enabled && Palette.IsClaude ? hover.Value : 0;
+        using SolidBrush fill = new(CaptureDrawing.Blend(Parent?.BackColor ?? Palette.Surface, ButtonElevation.Surface(Palette),
+            Palette.IsClaude ? emphasis * .4f : hover.Value));
         g.FillPath(fill, shape);
         if (Focused && ShowFocusCues || SystemInformation.HighContrast)
         {
@@ -193,10 +195,12 @@ internal sealed class SettingsDisclosure : Button
             if (Palette.IsClaude) CaptureDrawing.DrawInsideBorder(g, face, ButtonElevation.CompactRadius(face, s), edge.Color, edge.Width);
             else g.DrawPath(edge, shape);
         }
-        TextRenderer.DrawText(g, Text, Font, new Rectangle((int)(SettingsLayout.Inset * s), 0, Math.Max(0, Width - (int)(2 * SettingsLayout.Inset * s)), Height), Palette.Text,
+        TextRenderer.DrawText(g, Text, Font, new Rectangle((int)(SettingsLayout.Inset * s), 0, Math.Max(0, Width - (int)(2 * SettingsLayout.Inset * s)), Height),
+            CaptureDrawing.Blend(Palette.Text, Palette.Accent, emphasis),
             TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | UiLanguage.TextDirection);
         float x = face.Right - 15 * s, y = Height / 2f;
-        using Pen chevron = new(Palette.Secondary, 1.7f * s) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
+        using Pen chevron = new(CaptureDrawing.Blend(Palette.Secondary, Palette.Accent, emphasis), 1.7f * s)
+            { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
         g.TranslateTransform(x, y);
         g.RotateTransform(-180 * rotation.Value);
         g.DrawLines(chevron, new PointF[] { new(-4 * s, -2 * s), new(0, 2 * s), new(4 * s, -2 * s) });

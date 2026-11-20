@@ -150,12 +150,32 @@ internal sealed class SettingsReveal : Panel
     protected override void OnSizeChanged(EventArgs e)
     {
         base.OnSizeChanged(e);
+        UpdateBorderClip();
         // Height changes are clipping only. The editor is measured on width/content changes.
         if (editor != null && Width != arrangedWidth)
         {
             ArrangeEditor();
             if (reveal != null) ApplyHeight();
         }
+    }
+
+    protected override void OnDpiChangedAfterParent(EventArgs e)
+    {
+        base.OnDpiChangedAfterParent(e);
+        UpdateBorderClip();
+    }
+
+    internal void UpdateBorderClip()
+    {
+        Region? previous = Region;
+        if (Width > 0 && Height > 0 && Parent is SettingsGroup { UsesPageDivider: true } group)
+        {
+            // Leave the parent's divider exposed while the editor expands or collapses.
+            int border = CaptureDrawing.BorderPixelWidth(group.DeviceDpi / 96f);
+            Region = new Region(new Rectangle(0, 0, Width, Math.Max(0, Height - border)));
+        }
+        else if (previous != null) Region = null;
+        previous?.Dispose();
     }
 
     public override Size GetPreferredSize(Size proposedSize) => new(Width, Height);

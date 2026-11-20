@@ -56,6 +56,9 @@ internal static class Strings
     internal static string CaptureStatus => UiText.L("CaptureStatus");
     internal static string SaveReturn => UiText.L("SaveReturn");
     internal static string Cancel => UiText.L("Cancel");
+    internal static string EditorCloseHeading => UiText.L("EditorCloseHeading");
+    internal static string EditorCloseDetail => UiText.L("EditorCloseDetail");
+    internal static string EditorCloseDiscard => UiText.L("EditorCloseDiscard");
     internal static string Motion => UiText.L("Motion");
     internal static string SettingsSubtitle => UiText.L("SettingsSubtitle");
     internal static string Back => UiText.L("Back");

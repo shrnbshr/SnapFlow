@@ -41,6 +41,9 @@ internal static class ScreenshotEditor
             return imageBounds;
         });
         bool transparency = palette.AllowsTransparency(preferences?.TransparencyEnabled ?? true);
+        OwnedDialogAppearance.Attach(editor, palette, transparency);
+        editor.EditorCloseConfirmation = () => OwnedDialogAppearance.ConfirmClose(editor, palette, transparency);
+        editor.EditorTextDialogCreated += dialog => EditorTextDialogAppearance.Apply(dialog, palette, transparency);
         void InitializeNativeAppearance()
         {
             if (!editor.IsHandleCreated) return;

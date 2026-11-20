@@ -9,9 +9,8 @@ internal static class SettingsColors
         {
             if (control is SettingsGroup group)
             {
-                group.Palette = palette;
+                group.ApplyPalette(palette, inSettingsPage: root is SettingsPage);
                 background = group.SurfaceColor;
-                group.Invalidate();
             }
             control.BackColor = background;
             control.ForeColor = Equals(control.Tag, "secondary") ? palette.Secondary : palette.Text;
@@ -20,7 +19,8 @@ internal static class SettingsColors
             if (control is AboutDocumentButton)
                 ButtonPointerBounds.Apply(control, palette.IsClaude);
             else if (control is AboutLinkButton or SettingsDisclosure or ShortcutRecorder or ShortcutClearButton or ThemeOption)
-                ButtonPointerBounds.Apply(control, palette.IsClaude, compact: true, radius: control is ThemeOption ? 8 : null);
+                ButtonPointerBounds.Apply(control, palette.IsClaude, compact: true,
+                    radius: control is ThemeOption ? ThemeOption.ClaudeCornerRadius : null);
             if (control.Name == "aboutDivider") control.BackColor = palette.Border;
             if (control is SettingsFolderField folderField) { folderField.ApplyPalette(palette); return; }
             if (control is SettingsNumberField number) { number.ApplyPalette(palette); return; }

@@ -477,9 +477,10 @@ namespace ShareX.HelpersLib
 
         public static DialogResult ShowDialogTopMost(this Form form, Form owner)
         {
-            if (owner != null && owner.TopMost)
+            if (owner != null)
             {
-                form.TopMost = true;
+                if (owner.TopMost) form.TopMost = true;
+                ShareXResources.OnOwnedDialogOpening(form, owner);
             }
 
             return form.ShowDialog(owner);

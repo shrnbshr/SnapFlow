@@ -7,6 +7,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="SnapFlow" />
     <PackageReference Include="Newtonsoft.Json" />
   </ItemGroup>
 </Project>

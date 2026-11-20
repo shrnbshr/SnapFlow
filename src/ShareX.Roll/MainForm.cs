@@ -8,11 +8,11 @@ namespace ShareX.Roll;
 
 public sealed partial class MainForm : HotkeyForm
 {
-    private readonly PreviewCanvas preview = new() { Dock = DockStyle.Fill, SizeMode = PictureBoxSizeMode.Zoom };
+    private readonly PreviewCanvas preview = new() { Name = "previewCanvas", Dock = DockStyle.Fill, SizeMode = PictureBoxSizeMode.Zoom };
     private readonly Label status = new() { AutoSize = true, Dock = DockStyle.Fill, Padding = new Padding(0, 12, 0, 0) };
-    private readonly Button copy = new() { Name = "copyButton", Text = L("CopyImage"), AutoSize = true, Enabled = false };
-    private readonly Button save = new() { Name = "saveButton", Text = L("SaveAs"), AutoSize = true, Enabled = false };
-    private readonly Button edit = new() { Name = "editButton", Text = L("Edit"), AutoSize = true, Enabled = false };
+    private readonly CaptureModeButton copy = new() { Name = "copyButton", Kind = "editorCopy", Enabled = false };
+    private readonly CaptureModeButton save = new() { Name = "saveButton", Kind = "previewSave", Enabled = false };
+    private readonly CaptureModeButton edit = new() { Name = "editButton", Kind = "previewEdit", Enabled = false };
     private readonly List<HotkeyInfo> hotkeys = new();
     private readonly string settingsPath = Path.Combine(AppContext.BaseDirectory, "SnapFlow.settings.json");
     private ScrollingCaptureOptions scrollOptions;
@@ -29,7 +29,7 @@ public sealed partial class MainForm : HotkeyForm
         Icon = ShareXResources.Icon;
         AutoScaleDimensions = new SizeF(96, 96);
         AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(960, 720);
+        ClientSize = new Size(800, 580);
         MinimumSize = new Size(700, 580);
         StartPosition = FormStartPosition.CenterScreen;
         scrollOptions = LoadOptions(); // No overrides: use the released version's defaults.

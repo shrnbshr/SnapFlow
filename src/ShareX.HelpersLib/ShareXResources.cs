@@ -24,6 +24,7 @@
 #endregion License Information (GPL v3)
 
 using ShareX.HelpersLib.Properties;
+using System;
 using System.ComponentModel;
 using System.Drawing;
 using System.Reflection;
@@ -108,6 +109,10 @@ namespace ShareX.HelpersLib
         }
 
         public static ShareXTheme Theme { get; set; } = ShareXTheme.DarkTheme;
+
+        internal static event Action<Form, Form> OwnedDialogOpening;
+
+        internal static void OnOwnedDialogOpening(Form dialog, Form owner) => OwnedDialogOpening?.Invoke(dialog, owner);
 
         public static void ApplyTheme(Form form, bool closeOnEscape = false, bool setIcon = true)
         {

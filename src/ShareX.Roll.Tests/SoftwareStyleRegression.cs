@@ -16,8 +16,12 @@ internal static class SoftwareStyleRegression
     private static extern nint SendMessage(nint handle, uint message, nint wParam, nint lParam);
     [DllImport("user32.dll")]
     private static extern bool LogicalToPhysicalPointForPerMonitorDPI(nint handle, ref Point point);
+    [DllImport("user32.dll")]
+    private static extern nint SetThreadDpiAwarenessContext(nint context);
     [DllImport("dwmapi.dll")]
     private static extern int DwmFlush();
+    [DllImport("gdi32.dll")]
+    private static extern bool PtInRegion(nint region, int x, int y);
 
     private static void CheckButtonFace(Control control, bool claude)
     {
@@ -133,7 +137,7 @@ internal static class SoftwareStyleRegression
         float scale = button.DeviceDpi / 96f;
         int x = button.Width / 2;
         int accent = CapturePalette.ClaudeLight.Accent.ToArgb();
-        int ink = highlighted ? accent : CapturePalette.ClaudeLight.Text.ToArgb();
+        int ink = highlighted ? accent : CapturePalette.ClaudeLight.Secondary.ToArgb();
         int thin = (int)MathF.Round(scale), thick = (int)MathF.Round(2 * scale);
         int[] Rows(Bitmap image, int color) => Enumerable.Range(button.Height / 2, button.Height / 2)
             .Where(y => Enumerable.Range(x - 10, 21).All(column => image.GetPixel(column, y).ToArgb() == color)).ToArray();
@@ -164,14 +168,109 @@ internal static class SoftwareStyleRegression
         SendMessage(target.Handle, 0x202, 0, packed); // WM_LBUTTONUP
     }
 
-    private static Bitmap CaptureLiveControl(Control control)
+    private static Bitmap CaptureLiveControl(Control control, Rectangle? bounds = null)
     {
-        Point start = control.PointToScreen(Point.Empty);
-        Point end = control.PointToScreen(new Point(control.Width, control.Height));
+        Rectangle area = bounds ?? control.ClientRectangle;
+        Point start = control.PointToScreen(area.Location);
+        Point end = control.PointToScreen(new Point(area.Right, area.Bottom));
         Check(LogicalToPhysicalPointForPerMonitorDPI(control.Handle, ref start) &&
             LogicalToPhysicalPointForPerMonitorDPI(control.Handle, ref end), "mapped " + control.Name + " to screen pixels");
         DwmFlush();
-        return new Screenshot().CaptureRectangle(Rectangle.FromLTRB(start.X, start.Y, end.X, end.Y));
+        nint previous = SetThreadDpiAwarenessContext((nint)(-4));
+        try { return new Screenshot { RemoveOutsideScreenArea = false }.CaptureRectangle(Rectangle.FromLTRB(start.X, start.Y, end.X, end.Y)); }
+        finally { if (previous != 0) SetThreadDpiAwarenessContext(previous); }
+    }
+
+    private static async Task VerifyGroupDividerAsync(ScrollableControl viewport, SettingsGroup group,
+        CapturePalette palette, string state, string? screenshot = null)
+    {
+        float scale = group.DeviceDpi / 96f;
+        int inset = (int)MathF.Round(16 * scale);
+        int bottom = viewport.PointToClient(group.PointToScreen(new Point(0, group.Height))).Y;
+        viewport.AutoScrollPosition = new Point(0, Math.Max(0, -viewport.AutoScrollPosition.Y +
+            bottom - viewport.ClientSize.Height + inset));
+        await Task.Delay(70);
+
+        int height = Math.Min(group.Height, (int)MathF.Ceiling((screenshot == null ? 36 : 92) * scale));
+        Rectangle strip = new(0, group.Height - height, group.Width, height);
+        using Bitmap frame = CaptureLiveControl(group, strip);
+        int stroke = CaptureDrawing.BorderPixelWidth(scale);
+        float desktopScale = frame.Width / (float)group.Width;
+        bool resampled = desktopScale > 1.01f;
+        int margin = (int)MathF.Ceiling(inset * desktopScale) + (resampled ? 1 : 0);
+        int edge = (int)MathF.Ceiling(stroke * desktopScale);
+        int tolerance = resampled ? ColorDistance(palette.Border, palette.Background) / 3 : 0;
+        bool dividerMatches = true;
+        // Allow blending near the ends of lines on DPI-unaware windows, and verify every interior column.
+        for (int x = margin; x < frame.Width - margin; x++)
+        {
+            if (resampled)
+                dividerMatches &= Enumerable.Range(frame.Height - edge - 1, edge + 1)
+                    .Any(y => ColorDistance(frame.GetPixel(x, y), palette.Border) <= tolerance);
+            else
+                for (int y = frame.Height - stroke; y < frame.Height; y++)
+                    dividerMatches &= frame.GetPixel(x, y).ToArgb() == palette.Border.ToArgb();
+        }
+        int outsideDivider = margin - (resampled ? 3 : 1);
+        bool flatEdges = Enumerable.Range(0, edge).All(x =>
+            ColorDistance(frame.GetPixel(x, frame.Height / 2), palette.Background) <= tolerance &&
+            ColorDistance(frame.GetPixel(frame.Width - 1 - x, frame.Height / 2), palette.Background) <= tolerance);
+        int ruleY = frame.Height - Math.Max(1, (edge + 1) / 2);
+        bool insetMatches = ColorDistance(frame.GetPixel(outsideDivider, ruleY), palette.Background) <= tolerance &&
+            ColorDistance(frame.GetPixel(frame.Width - 1 - outsideDivider, ruleY), palette.Background) <= tolerance;
+        if (screenshot != null) frame.Save(screenshot);
+        Check(dividerMatches && insetMatches && flatEdges,
+            $"{group.Name} {state} has one continuous inset divider and flat side edges at {group.DeviceDpi} DPI");
+    }
+
+    private static async Task VerifySettingsDividersAsync(SettingsPage page, CapturePalette palette, string output)
+    {
+        ScrollableControl viewport = (ScrollableControl)typeof(SettingsPage).GetField("scroller", Members)!.GetValue(page)!;
+        foreach (string name in new[] { "softwareStyleRow", "transparencyRow", "motionRow", "languageRow", "aboutSoftware" }
+            .Concat(ApplicationPreferences.Actions.Select(action => action.Kind + "ShortcutRow")))
+            await VerifyGroupDividerAsync(viewport, Find<SettingsGroup>(page, name), palette, "at rest");
+
+        SettingsGroup saveLocation = Find<SettingsGroup>(page, "saveLocationGroup");
+        MotionToggle folderToggle = Find<MotionToggle>(page, "defaultSaveFolderToggle");
+        bool folderWasEnabled = folderToggle.Checked;
+        try
+        {
+            folderToggle.Checked = false;
+            await VerifyGroupDividerAsync(viewport, saveLocation, palette, "without path");
+            folderToggle.Checked = true;
+            Check(Find<Control>(page, "saveFolderPathRow").Visible, "the save-folder controls show when enabled");
+            await VerifyGroupDividerAsync(viewport, saveLocation, palette, "with path");
+        }
+        finally { folderToggle.Checked = folderWasEnabled; }
+
+        SettingsGroup group = Find<SettingsGroup>(page, "scrollingOptionsRow");
+        SettingsDisclosure disclosure = Find<SettingsDisclosure>(page, "scrollingOptionsButton");
+        SettingsReveal reveal = Find<SettingsReveal>(page, "scrollingReveal");
+        SettingsChoice method = Find<SettingsChoice>(page, "cbScrollMethod");
+        string shade = palette == CapturePalette.ClaudeDark ? "dark" : "light";
+
+        await VerifyGroupDividerAsync(viewport, group, palette, "collapsed");
+        disclosure.PerformClick();
+        reveal.Finish();
+        MotionToggle autoSave = Find<MotionToggle>(page, "cbAutoUpload");
+        Check(disclosure.Expanded && autoSave.Visible && autoSave.DeviceDpi == group.DeviceDpi,
+            "the last scrolling option is visible after expansion");
+        await VerifyGroupDividerAsync(viewport, group, palette, "expanded",
+            Path.Combine(output, $"scrolling-expanded-{shade}-{group.DeviceDpi}.png"));
+        Label caption = autoSave.Parent!.Controls.OfType<Label>().Single();
+        Check(caption.Width >= TextRenderer.MeasureText(caption.Text, caption.Font).Width,
+            $"the last option's full label fits at {group.DeviceDpi} DPI");
+        ((UiTween)typeof(MotionToggle).GetField("hover", Members)!.GetValue(autoSave)!).SnapTo(0);
+        VerifyToggleTrack(autoSave, autoSave.Checked ? palette.Accent : palette.Surface,
+            autoSave.Checked ? palette.Accent : palette.FieldBorder, live: Application.HighDpiMode == HighDpiMode.PerMonitorV2);
+        int previousMethod = method.SelectedIndex;
+        method.SelectedIndex = (int)ScrollMethod.PageDown;
+        Check(!Find<NumericUpDown>(page, "nudScrollAmount").Visible, "Page Down hides the unused scroll amount");
+        await VerifyGroupDividerAsync(viewport, group, palette, "expanded with Page Down");
+        method.SelectedIndex = previousMethod;
+        disclosure.PerformClick();
+        reveal.Finish();
+        await VerifyGroupDividerAsync(viewport, group, palette, "re-collapsed");
     }
 
     private static void VerifyFieldSurface(SettingsChoice style)
@@ -182,8 +281,7 @@ internal static class SoftwareStyleRegression
         int y = frame.Height / 5;
         Color textSide = frame.GetPixel(frame.Width / 5, y);
         Color arrowSide = frame.GetPixel(frame.Width * 4 / 5, y);
-        Check(textSide == arrowSide && (textSide.ToArgb() == CapturePalette.ClaudeLight.Canvas.ToArgb() ||
-            textSide.ToArgb() == CapturePalette.ClaudeLight.Hover.ToArgb()),
+        Check(textSide == arrowSide && textSide.ToArgb() == CapturePalette.ClaudeLight.Surface.ToArgb(),
             $"the live selection field uses one surface across its text and arrow sides ({textSide}, {arrowSide})");
     }
 
@@ -211,17 +309,248 @@ internal static class SoftwareStyleRegression
         Console.WriteLine("PASS: " + message);
     }
 
-    private static void VerifyWorkspaceLayout(MainForm main, int logicalSidebarWidth)
+    private static int ColorDistance(Color a, Color b) =>
+        Math.Max(Math.Abs(a.R - b.R), Math.Max(Math.Abs(a.G - b.G), Math.Abs(a.B - b.B)));
+
+    private static void VerifyRoundedCorner(Control control, Bitmap bitmap, RectangleF hitFace, float radius,
+        Color background, Color fill, Color ink)
     {
-        TableLayoutPanel body = Find<TableLayoutPanel>(main, "captureBody");
-        int[] widths = body.GetColumnWidths();
-        int expected = (int)Math.Round(logicalSidebarWidth * main.DeviceDpi / 96f);
-        Check(Math.Abs(widths[0] - expected) <= 1 && widths[1] > widths[0],
-            $"workspace sidebar scales once and leaves room for preview (DPI={main.DeviceDpi}, sidebar={widths[0]}, expected={expected}, preview={widths[1]})");
+        nint region = NativeMethods.CreateRectRgn(0, 0, 0, 0);
+        try
+        {
+            Check(NativeMethods.GetWindowRgn(control.Handle, region) > 0, $"{control.Name} has a native hit region");
+            int right = (int)MathF.Ceiling(hitFace.Left + radius), bottom = (int)MathF.Ceiling(hitFace.Top + radius);
+            int cut = 0, softened = 0;
+            for (int corner = 0; corner < 4; corner++)
+            for (int y = 0; y < bottom; y++)
+            for (int x = 0; x < right; x++)
+            {
+                int px = (corner & 1) == 0 ? x : bitmap.Width - 1 - x;
+                int py = (corner & 2) == 0 ? y : bitmap.Height - 1 - y;
+                Color pixel = bitmap.GetPixel(px, py);
+                if (ColorDistance(pixel, background) <= 2) continue;
+                if (!PtInRegion(region, px, py)) cut++;
+                if (pixel.ToArgb() != ink.ToArgb() && pixel.ToArgb() != fill.ToArgb()) softened++;
+            }
+            Check(cut == 0 && softened > 4,
+                $"{control.Name} keeps its antialiased corner inside the hit region at {control.DeviceDpi} DPI ({cut} clipped, {softened} blended)");
+        }
+        finally { NativeMethods.DeleteObject(region); }
+    }
+
+    private static void VerifyAppearanceStates(SettingsPage page, CapturePalette palette)
+    {
+        int dpi = page.DeviceDpi;
+        float scale = dpi / 96f;
+        ScrollableControl viewport = (ScrollableControl)typeof(SettingsPage).GetField("scroller", Members)!.GetValue(page)!;
+        SettingsChoice style = Find<SettingsChoice>(page, "softwareStyleSelector");
+        SettingsChoice language = Find<SettingsChoice>(page, "languageSelector");
+        const int side = 5;
+        Color ChoiceFill(SettingsChoice field)
+        {
+            viewport.ScrollControlIntoView(field);
+            using Bitmap bitmap = RenderControl(field);
+            int y = (int)MathF.Ceiling(5 * scale);
+            Color fill = bitmap.GetPixel(bitmap.Width / side, y);
+            Check(fill == bitmap.GetPixel(bitmap.Width * (side - 1) / side, y), $"{field.Name} paints one surface at {dpi} DPI");
+            return fill;
+        }
+        void Hover(Control control, bool hovered) =>
+            typeof(Control).GetMethod(hovered ? "OnMouseEnter" : "OnMouseLeave", Members)!.Invoke(control, [EventArgs.Empty]);
+
+        Check(style.DeviceDpi == dpi && language.DeviceDpi == dpi &&
+            style.Width == language.Width && style.Height == language.Height && style.Right == language.Right,
+            $"appearance selectors share dimensions and right alignment at {dpi} DPI");
+        Hover(style, false);
+        Hover(language, false);
+        Check(ChoiceFill(style).ToArgb() == palette.Surface.ToArgb() && ChoiceFill(language).ToArgb() == palette.Surface.ToArgb(),
+            $"both idle appearance selectors use the same paper at {dpi} DPI");
+        style.Focus();
+        Hover(language, true);
+        Check(ChoiceFill(language).ToArgb() == CaptureDrawing.Blend(palette.Surface, palette.Hover, .4f).ToArgb(),
+            $"pointer hover lightly shades the language field at {dpi} DPI");
+        Hover(language, false);
+        using (Bitmap field = RenderControl(language))
+            VerifyRoundedCorner(language, field, new RectangleF(scale, scale, language.Width - 2 * scale, language.Height - 2 * scale),
+                10 * scale, palette.Background, palette.Surface, palette.FieldBorder);
+
+        TableLayoutPanel options = Find<TableLayoutPanel>(page, "appearanceOptions");
+        ThemeOption[] cards = options.Controls.OfType<ThemeOption>().OrderBy(option => option.Left).ToArray();
+        Check(cards.Length == 3 && cards.Count(option => option.Checked) == 1,
+            $"the three color mode cards have one selection at {dpi} DPI");
+        foreach (ThemeOption option in cards)
+        {
+            option.SettleSelection();
+            ((UiTween)typeof(ThemeOption).GetField("hover", Members)!.GetValue(option)!).SnapTo(0);
+            viewport.ScrollControlIntoView(option);
+            using Bitmap bitmap = RenderControl(option);
+            RectangleF face = ButtonElevation.CompactFaceBounds(option.ClientSize, scale);
+            int centerX = bitmap.Width / 2;
+            int centerY = bitmap.Height / 2;
+            Color fill = option.Checked ? palette.Tint : palette.Surface;
+            int cardColor = fill.ToArgb();
+            int sampleOffset = (int)MathF.Round(25 * scale);
+            Check(bitmap.GetPixel(centerX, centerY - sampleOffset).ToArgb() == cardColor &&
+                bitmap.GetPixel(centerX, centerY + sampleOffset).ToArgb() == cardColor,
+                $"{option.Name} uses the expected selected or resting fill at {dpi} DPI");
+
+            bool focused = option.Focused && (bool)typeof(Control).GetProperty("ShowFocusCues", Members)!.GetValue(option)!;
+            int borderWidth = CaptureDrawing.BorderPixelWidth((focused ? 1.75f : 1) * scale);
+            Color edge = option.Checked || focused ? palette.Accent : palette.Border;
+            VerifyRoundedCorner(option, bitmap, face, ThemeOption.ClaudeCornerRadius * scale,
+                palette.Background, fill, edge);
+            face.Inflate(-2, -2);
+            int left = (int)MathF.Ceiling(face.Left), right = (int)MathF.Floor(face.Right) - 1;
+            int top = (int)MathF.Ceiling(face.Top), bottom = (int)MathF.Floor(face.Bottom) - 1;
+            Check(Enumerable.Range(0, borderWidth + 1).All(offset =>
+            {
+                int expected = offset < borderWidth ? edge.ToArgb() : cardColor;
+                return bitmap.GetPixel(centerX, top + offset).ToArgb() == expected &&
+                    bitmap.GetPixel(centerX, bottom - offset).ToArgb() == expected &&
+                    bitmap.GetPixel(left + offset, centerY).ToArgb() == expected &&
+                    bitmap.GetPixel(right - offset, centerY).ToArgb() == expected;
+            }), $"{option.Name} has a {borderWidth}px outline with the expected color on all four sides at {dpi} DPI");
+
+            int swatchX = (int)MathF.Round(face.Left + (ButtonSpacing.Horizontal + 13) * scale);
+            int swatchY = centerY + (int)MathF.Round(4 * scale);
+            Check(bitmap.GetPixel(swatchX, swatchY).ToArgb() == palette.Accent.ToArgb(),
+                $"{option.Name} renders the miniature window accent at {dpi} DPI");
+
+            int cornerX = (int)MathF.Round(face.Right - 14 * scale);
+            int cornerY = (int)MathF.Round(face.Top + 11 * scale);
+            int diameter = (int)MathF.Round(8 * scale);
+            Check(Enumerable.Range(cornerY - diameter / 2, diameter).All(y =>
+                Enumerable.Range(cornerX - diameter / 2, diameter).All(x =>
+                    bitmap.GetPixel(x, y).ToArgb() != palette.Accent.ToArgb())),
+                $"{option.Name} leaves out the old checkmark at {dpi} DPI");
+        }
+        using (Bitmap row = RenderControl(options))
+        {
+            for (int index = 1; index < cards.Length; index++)
+            {
+                int gutter = (cards[index - 1].Right + cards[index].Left) / 2;
+                Check(cards[index - 1].Right < cards[index].Left &&
+                    row.GetPixel(gutter, row.Height / 2).ToArgb() == palette.Background.ToArgb(),
+                    $"the gap before {cards[index].Name} shows the page background at {dpi} DPI");
+            }
+        }
+
+        MotionToggle toggle = Find<MotionToggle>(page, "animationsToggle");
+        MotionToggle disabled = Find<MotionToggle>(page, "transparencyToggle");
+        viewport.ScrollControlIntoView(toggle);
+        UiTween position = (UiTween)typeof(MotionToggle).GetField("position", Members)!.GetValue(toggle)!;
+        float original = position.Value;
+        try
+        {
+            Hover(toggle, false);
+            position.SnapTo(0);
+            VerifyToggleTrack(toggle, palette.Surface, palette.FieldBorder);
+            position.SnapTo(1);
+            VerifyToggleTrack(toggle, palette.Accent, palette.Accent);
+        }
+        finally { position.SnapTo(original); }
+        Check(!disabled.Enabled, "transparency remains unavailable in the Claude style");
+        VerifyToggleTrack(disabled, palette.Surface, palette.Border);
+        viewport.AutoScrollPosition = Point.Empty;
+    }
+
+    private static void VerifyToggleTrack(MotionToggle control, Color interior, Color border, bool live = false)
+    {
+        float scale = control.DeviceDpi / 96f;
+        RectangleF bounds = MotionToggle.TrackBounds(control.ClientSize, scale);
+        int top = (int)MathF.Ceiling(bounds.Top);
+        int bottom = (int)MathF.Floor(bounds.Bottom) - 1;
+        int width = (int)MathF.Round(scale, MidpointRounding.AwayFromZero);
+        control.Update();
+        using Bitmap bitmap = live ? CaptureLiveControl(control) : RenderControl(control);
+        int x = bitmap.Width / 2;
+        Check(bitmap.GetPixel(x, top).ToArgb() == border.ToArgb() &&
+            bitmap.GetPixel(x, bottom).ToArgb() == border.ToArgb() &&
+            bitmap.GetPixel(x, top + width).ToArgb() == interior.ToArgb(),
+            $"{control.Name} track and outline match its enabled and checked state at {control.DeviceDpi} DPI");
+    }
+
+    internal static async Task RunIntermediateDpiAsync(MainForm main)
+    {
+        string output = Path.GetFullPath("artifacts/software-style/simulated-dpi");
+        Directory.CreateDirectory(output);
+        FieldInfo deviceDpi = typeof(Control).GetField("_deviceDpi", Members)
+            ?? throw new InvalidOperationException("The WinForms DPI backing field has changed.");
+        bool originalMotion = UiMotion.UserEnabled;
+        try
+        {
+            foreach (int dpi in new[] { 120, 144, 168 })
+            foreach (AppearanceMode mode in new[] { AppearanceMode.Light, AppearanceMode.Dark })
+            {
+                float scale = dpi / 96f;
+                using Form host = new()
+                {
+                    AutoScaleMode = AutoScaleMode.None, StartPosition = FormStartPosition.Manual, Location = new Point(12, 12),
+                    FormBorderStyle = FormBorderStyle.None, ClientSize = new Size(760, 530), TopMost = true, ShowInTaskbar = false
+                };
+                using SettingsPage page = new(new()
+                {
+                    Style = SoftwareStyle.Claude, Appearance = mode, AnimationsEnabled = false, TransparencyEnabled = true
+                }, new(), (_, _) => null) { Dock = DockStyle.Fill, AutoScaleMode = AutoScaleMode.None };
+                host.Controls.Add(page);
+                host.Show(main);
+                // Create collapsed descendants' HWNDs before injecting DPI. Handle creation otherwise restores monitor DPI.
+                SettingsDisclosure disclosure = Find<SettingsDisclosure>(page, "scrollingOptionsButton");
+                SettingsReveal reveal = Find<SettingsReveal>(page, "scrollingReveal");
+                disclosure.PerformClick();
+                reveal.Finish();
+                disclosure.PerformClick();
+                reveal.Finish();
+                int monitorDpi = host.DeviceDpi;
+                static IEnumerable<Control> Descendants(Control parent)
+                {
+                    yield return parent;
+                    foreach (Control child in parent.Controls)
+                    foreach (Control descendant in Descendants(child))
+                        yield return descendant;
+                }
+                var controls = Descendants(host).Select(control => (Control: control, Font: control.Font)).ToArray();
+                foreach (var entry in controls) deviceDpi.SetValue(entry.Control, dpi);
+                page.Scale(new SizeF(scale, scale));
+                host.ClientSize = new Size((int)(760 * scale), (int)(510 * scale));
+                // GDI text still uses the physical monitor DPI. Adjust the fixture's point sizes to compensate.
+                Dictionary<Font, Font> fonts = new();
+                try
+                {
+                    foreach (var entry in controls)
+                    {
+                        if (!fonts.TryGetValue(entry.Font, out Font? scaled))
+                        {
+                            scaled = new Font(entry.Font.FontFamily, entry.Font.SizeInPoints * dpi / monitorDpi, entry.Font.Style);
+                            fonts.Add(entry.Font, scaled);
+                        }
+                        entry.Control.Font = scaled;
+                    }
+                    page.RefreshSystemAppearance();
+                    await Task.Delay(140);
+                    Check(page.DeviceDpi == dpi, $"fixture renders at the requested {dpi} DPI (actual {page.DeviceDpi})");
+                    Console.WriteLine($"DPI CHECK: simulated {dpi} DPI, {mode}");
+                    VerifyAppearanceStates(page, page.PreviewPalette);
+                    SaveFrame(Find<TableLayoutPanel>(page, "appearanceOptions"), Path.Combine(output, $"color-modes-{mode}-{dpi}.png"));
+                    await VerifySettingsDividersAsync(page, page.PreviewPalette, output);
+                }
+                finally
+                {
+                    host.Close();
+                    foreach (Font font in fonts.Values) font.Dispose();
+                }
+            }
+        }
+        finally { UiMotion.UserEnabled = originalMotion; }
+    }
+
+    private static void VerifyWorkspaceLayout(MainForm main)
+    {
+        Control toolbar = Find<Control>(main, "previewToolbar");
         PreviewSurface frame = Find<PreviewSurface>(main, "previewSurface");
         PreviewCanvas canvas = frame.Controls.OfType<PreviewCanvas>().Single();
-        Check(body.ClientRectangle.Contains(frame.Bounds) && frame.ClientRectangle.Contains(canvas.Bounds),
-            $"preview canvas stays in its panel (body={body.ClientSize}, panel={frame.Bounds}, canvas={canvas.Bounds})");
+        Check(toolbar.Bottom <= frame.Top && frame.Width == toolbar.Width && canvas.Width == frame.Width &&
+            frame.ClientRectangle.Contains(canvas.Bounds), "the preview fills the space below the command bar");
     }
 
     private static void VerifyDescriptionFonts(Font interfaceFont)
@@ -270,15 +599,11 @@ internal static class SoftwareStyleRegression
         typeof(MainForm).GetField("settingsPath", Members)!.SetValue(main, settingsPath);
 
         Button settings = Find<Button>(main, "settingsButton");
-        VerifyWorkspaceLayout(main, 272);
+        VerifyWorkspaceLayout(main);
         VerifyDescriptionFonts(main.Font);
         VerifyLinkArrow();
-        Label previewTitle = (Label)typeof(MainForm).GetField("previewTitle", Members)!.GetValue(main)!;
-        Label previewHint = (Label)typeof(MainForm).GetField("previewHint", Members)!.GetValue(main)!;
         Button zoomPercent = Find<Button>(main, "previewZoomPercent");
-        string defaultPreviewFont = previewHint.Font.Name;
         string defaultZoomFont = zoomPercent.Font.Name;
-        string defaultTitleFamily = Find<Label>(main, "captureHeading").Font.Name;
         Color defaultBackground = main.BackColor;
         main.TopMost = true;
         main.ForceActivate();
@@ -326,11 +651,9 @@ internal static class SoftwareStyleRegression
         typeof(MainForm).GetMethod("ApplyAppearance", Members)!.Invoke(main, null);
         Check(main.BackColor == CapturePalette.ClaudeLight.Background, "system refresh respects the active style draft");
         Find<Button>(page, "cancelSettingsButton").PerformClick();
-        Font restoredTitle = Find<Label>(main, "captureHeading").Font;
-        Check(!page.Visible && main.BackColor == defaultBackground && restoredTitle.Name == defaultTitleFamily && restoredTitle.Bold
+        Check(!page.Visible && main.BackColor == defaultBackground
             && hint.Font.Name == page.Font.Name && !File.Exists(preferencesPath), "cancel restores the original style and type without writing preferences");
-        Check(previewHint.Font.Name == defaultPreviewFont && zoomPercent.Font.Name == defaultZoomFont,
-            "cancel restores the default workspace fonts");
+        Check(zoomPercent.Font.Name == defaultZoomFont, "cancel restores the default zoom readout font");
         Check(transition.GetValue(main) == null, "cancel across styles also avoids combining the two materials");
 
         CapturePalette[] palettes = [CapturePalette.ClaudeLight, CapturePalette.ClaudeDark];
@@ -345,10 +668,14 @@ internal static class SoftwareStyleRegression
             Check(main.BackColor == palette.Background && page.BackColor == palette.Background &&
                 style.Right <= style.Parent!.ClientSize.Width && style.Height >= 36 * page.DeviceDpi / 96,
                 "style field and palette render at the " + (dark ? "minimum" : "wide") + " window size");
-            style.Focus();
+            MotionToggle animations = Find<MotionToggle>(page, "animationsToggle");
+            Check(animations.Focus() && !style.Focused, "keyboard focus moves away from the style field");
+            VerifyBorderPixels(style, palette.FieldBorder, 1);
+            Check(style.Focus(), "keyboard focus returns to the style field");
             VerifyBorderPixels(style, palette.Accent, 1.5f);
-            VerifyBorderPixels(Find<RadioButton>(page, dark ? "themeDark" : "themeLight"), palette.Accent, 1);
             SaveFrame(main, Path.Combine(output, dark ? "settings-dark.png" : "settings-light.png"));
+            VerifyAppearanceStates(page, palette);
+            await VerifySettingsDividersAsync(page, palette, output);
 
             foreach (CaptureShortcut action in ApplicationPreferences.Actions)
                 Find<Button>(page, action.Kind + "Clear").PerformClick();
@@ -361,33 +688,29 @@ internal static class SoftwareStyleRegression
             Check(saved.Style == SoftwareStyle.Claude && saved.Appearance == (dark ? AppearanceMode.Dark : AppearanceMode.Light)
                 && !page.Visible && Find<PreviewSurface>(main, "previewSurface").Palette == palette,
                 $"save persists the style and applies the palette to the capture workspace (style={saved.Style}, mode={saved.Appearance}, settings visible={page.Visible}, feedback={Find<Label>(page, "settingsFeedback").Text})");
-            VerifyWorkspaceLayout(main, 220);
+            VerifyWorkspaceLayout(main);
             CheckButtonFace(Find<Button>(main, "regionButton"), claude: true);
             CheckButtonFace(settings, claude: true);
             CheckButtonFace(zoomPercent, claude: true);
-            Check(previewTitle.Font.Name == main.Font.Name && previewTitle.Font.Bold,
-                "the preview heading shares the interface family and uses weight for emphasis");
-            Check(Find<Label>(main, "captureHeading").Font.Name == main.Font.Name &&
-                Find<Label>(page, "aboutAppName").Font.Name == page.Font.Name,
-                "workspace and brand headings share the sans serif interface family");
-            Check(Find<Button>(main, "editButton").Top == Find<Button>(main, "saveButton").Top,
-                "the preview commands fit on one row");
+            Check(Find<Label>(page, "aboutAppName").Font.Name == page.Font.Name,
+                "the brand heading uses the sans serif interface family");
+            Check(!Find<Control>(main, "previewActions").Visible, "the empty toolbar hides image commands");
+            PreviewCanvas canvas = Find<PreviewSurface>(main, "previewSurface").Controls.OfType<PreviewCanvas>().Single();
+            using (Bitmap frame = new(canvas.Width, canvas.Height))
+            {
+                canvas.DrawToBitmap(frame, canvas.ClientRectangle);
+                Check(canvas.Image == null && frame.GetPixel(frame.Width / 2, 8).ToArgb() == palette.Canvas.ToArgb(),
+                    "the empty preview uses the palette's canvas color");
+            }
             SaveFrame(main, Path.Combine(output, dark ? "workspace-dark.png" : "workspace-light.png"));
             using Font descriptionFont = CaptureTypography.CreateDescription(main.Font, 10, palette);
-            Check(previewHint.Font.Name == descriptionFont.Name && zoomPercent.Font.Name == descriptionFont.Name,
-                "workspace preview status and zoom readout use the serif description font");
-            foreach (CaptureShortcut action in ApplicationPreferences.Actions)
-            {
-                CaptureModeButton captureButton = Find<CaptureModeButton>(main, action.Kind + "Button");
-                Font shortcutFont = (Font)typeof(CaptureModeButton).GetField("shortcutFont", Members)!.GetValue(captureButton)!;
-                Check(shortcutFont.Name == descriptionFont.Name, action.Kind + " shortcut is drawn in the serif description font");
-            }
+            Check(zoomPercent.Font.Name == descriptionFont.Name, "the zoom readout uses the serif description font");
             if (dark)
             {
                 using Bitmap source = new(160, 120);
                 typeof(MainForm).GetMethod("SetPreview", Members)!.Invoke(main, [(Bitmap)source.Clone()]);
-                Check(previewHint.Text.Contains("160") && previewHint.Text.Contains("120") && previewHint.Font.Name == descriptionFont.Name,
-                    "image dimensions keep the same serif font after a capture");
+                Check(zoomPercent.AccessibleDescription!.Contains("160") && zoomPercent.AccessibleDescription.Contains("120") &&
+                    Find<Control>(main, "previewActions").Visible, "image actions and dimensions are available after a capture");
                 using var editor = ScreenshotEditor.Create(source, palette, saved);
                 editor.Show(main);
                 await Task.Delay(140);
@@ -411,6 +734,12 @@ internal static class SoftwareStyleRegression
 
         settings.PerformClick();
         Check(style.SelectedIndex == (int)SoftwareStyle.Claude, "saved style is restored when settings reopen");
+        Find<RadioButton>(page, "themeSystem").Checked = true;
+        await Task.Delay(270);
+        CapturePalette systemPalette = CapturePalette.For(AppearanceMode.System, SoftwareStyle.Claude);
+        Check(main.BackColor == systemPalette.Background, "selecting System previews the Windows color mode");
+        VerifyAppearanceStates(page, systemPalette);
+        SaveFrame(Find<TableLayoutPanel>(page, "appearanceOptions"), Path.Combine(output, $"color-modes-{page.DeviceDpi}.png"));
         Find<Button>(page, "resetSettingsButton").PerformClick();
         Check(style.SelectedIndex == (int)SoftwareStyle.Default && Find<MotionToggle>(page, "transparencyToggle").Enabled,
             "reset previews the default style and re-enables the transparency control");
@@ -419,8 +748,14 @@ internal static class SoftwareStyleRegression
 
     private static void SaveFrame(Control control, string path)
     {
-        using Bitmap image = new(control.Width, control.Height);
-        control.DrawToBitmap(image, new Rectangle(Point.Empty, control.Size));
+        using Bitmap image = RenderControl(control);
         image.Save(path, System.Drawing.Imaging.ImageFormat.Png);
+    }
+
+    private static Bitmap RenderControl(Control control)
+    {
+        Bitmap image = new(control.Width, control.Height);
+        control.DrawToBitmap(image, new Rectangle(Point.Empty, control.Size));
+        return image;
     }
 }

@@ -9,7 +9,7 @@ namespace ShareX.Roll;
 
 public sealed partial class MainForm
 {
-    private readonly Button settingsButton = new() { Name = "settingsButton", Text = L("Settings"), AutoSize = true, MinimumSize = new Size(88, 38) };
+    private readonly CaptureModeButton settingsButton = new() { Name = "settingsButton", Kind = "settings" };
     private readonly string preferencesPath = Path.Combine(AppContext.BaseDirectory, "SnapFlow.preferences.json");
     private ApplicationPreferences preferences = new();
     private readonly Dictionary<ushort, string> hotkeyActions = new();
@@ -159,7 +159,7 @@ public sealed partial class MainForm
             UpdateShortcutLabel(action.ModeKey, hotkey);
         }
         status.Text = preferencesWarning ?? (conflicts.Count == 0
-            ? L("StartHint")
+            ? string.Empty
             : string.Join(L("ListSeparator"), conflicts) + L("ShortcutConflictSuffix"));
     }
 
@@ -173,6 +173,7 @@ public sealed partial class MainForm
     {
         if (settingsPage != null) { settingsPage.Focus(); return; }
         if (busy || scrollForm is { IsDisposed: false }) return;
+        workspaceTips.HideHint();
         long started = Stopwatch.GetTimestamp();
         PageTransition? transition = PreparePageChange(workspace, true);
         // Release our registrations while recording, so existing combinations can be reassigned.

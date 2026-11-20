@@ -199,10 +199,11 @@ internal sealed class AboutDocumentButton : Button
             TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine |
             TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis | UiLanguage.TextDirection;
         Color ink = Enabled ? ForeColor : palette.Secondary;
-        if (palette.IsClaude)
+        if (palette.IsClaude && Enabled)
         {
-            float emphasis = Enabled ? Math.Max(hover.Value, press.Value) : 0;
-            CaptureDrawing.DrawUnderlinedText(graphics, Text, Font, caption, CaptureDrawing.Blend(ink, palette.Accent, emphasis), flags, scale, emphasis);
+            float emphasis = Math.Max(hover.Value, press.Value);
+            CaptureDrawing.DrawUnderlinedText(graphics, Text, Font, caption, CaptureDrawing.Blend(ink, palette.Accent, emphasis),
+                CaptureDrawing.Blend(palette.Secondary, palette.Accent, emphasis), flags, scale, emphasis);
         }
         else TextRenderer.DrawText(graphics, Text, Font, caption, ink, flags);
     }
@@ -260,7 +261,9 @@ internal sealed class AboutLinkButton : Button
             if (palette.IsClaude) CaptureDrawing.DrawInsideBorder(g, face, ButtonElevation.CompactRadius(face, s), edge.Color, edge.Width);
             else g.DrawPath(edge, shape);
         }
-        using Pen glyph = new(palette.Secondary, 1.5f * s) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
+        float emphasis = palette.IsClaude && Enabled ? Math.Max(hover.Value, press.Value) : 0;
+        using Pen glyph = new(CaptureDrawing.Blend(palette.Secondary, palette.Accent, emphasis), 1.5f * s)
+            { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
         float x = face.Left + ButtonSpacing.Horizontal * s, y = Height / 2f - 10 * s;
         if (profile)
         {
@@ -280,12 +283,10 @@ internal sealed class AboutLinkButton : Button
         int left = (int)(face.Left + (ButtonSpacing.Horizontal + 20 + ButtonSpacing.IconGap) * s);
         Rectangle headingBounds = new(left, top, Math.Max(1, DetailAvailable), palette.IsClaude ? titleHeight + (int)Math.Ceiling(3 * s) : titleHeight);
         const TextFormatFlags headingFlags = TextFormatFlags.Left | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding;
-        if (palette.IsClaude)
+        if (palette.IsClaude && Enabled)
         {
-            float emphasis = Enabled ? Math.Max(hover.Value, press.Value) : 0;
-            Color ink = Enabled ? palette.Text : palette.Secondary;
-            CaptureDrawing.DrawUnderlinedText(g, heading, title, headingBounds, CaptureDrawing.Blend(ink, palette.Accent, emphasis), headingFlags, s, emphasis);
-            glyph.Color = CaptureDrawing.Blend(glyph.Color, palette.Accent, emphasis);
+            CaptureDrawing.DrawUnderlinedText(g, heading, title, headingBounds, CaptureDrawing.Blend(palette.Text, palette.Accent, emphasis),
+                glyph.Color, headingFlags, s, emphasis);
         }
         else TextRenderer.DrawText(g, heading, title, headingBounds, palette.Text, headingFlags | TextFormatFlags.VerticalCenter);
         TextRenderer.DrawText(g, detail, Font, new Rectangle(left, top + titleHeight + (int)(6 * s), Math.Max(1, DetailAvailable), detailHeight), palette.Secondary,

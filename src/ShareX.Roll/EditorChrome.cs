@@ -412,16 +412,18 @@ internal sealed class EditorToolStripRenderer : ToolStripProfessionalRenderer
     {
         e.TextColor = Foreground(e.Item);
         e.TextFormat |= UiLanguage.TextDirection;
-        if (IsTextAction(e.Item) && e.TextFont != null)
+        if (e.Item.Enabled && IsTextAction(e.Item) && e.TextFont != null)
         {
             float scale = (e.Item.GetCurrentParent()?.DeviceDpi ?? 96) / 96f;
             int inset = (int)MathF.Round(4 * scale);
             Rectangle caption = new(inset, 0, e.Item.Width - 2 * inset, e.Item.Height);
-            float emphasis = e.Item.Enabled && states.TryGetValue(e.Item, out Feedback? state)
+            float emphasis = states.TryGetValue(e.Item, out Feedback? state)
                 ? Math.Max(state.Hover.Value, state.Press.Value) : 0;
-            Color ink = PaintingCoverage ? Color.Black : !e.Item.Enabled ? palette.Secondary : IsHighlightedAction(e.Item) ?
+            bool highlighted = IsHighlightedAction(e.Item);
+            Color ink = PaintingCoverage ? Color.Black : highlighted ?
                 palette.Accent : CaptureDrawing.Blend(e.TextColor, palette.Accent, emphasis);
-            CaptureDrawing.DrawUnderlinedText(e.Graphics, e.Text, e.TextFont, caption, ink,
+            Color lineInk = PaintingCoverage || highlighted ? ink : CaptureDrawing.Blend(palette.Secondary, palette.Accent, emphasis);
+            CaptureDrawing.DrawUnderlinedText(e.Graphics, e.Text, e.TextFont, caption, ink, lineInk,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding |
                 TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | UiLanguage.TextDirection, scale, emphasis);
             return;
@@ -436,7 +438,7 @@ internal sealed class EditorToolStripRenderer : ToolStripProfessionalRenderer
             e.TextFormat |= TextFormatFlags.NoPadding | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine |
                 (shortcut != rtl ? TextFormatFlags.Right : TextFormatFlags.Left);
         }
-        else if (e.Item.GetCurrentParent()?.IsDropDown != true && e.Item.DisplayStyle == ToolStripItemDisplayStyle.Text)
+        else if (e.Item is not ToolStripLabel && e.Item.GetCurrentParent()?.IsDropDown != true && e.Item.DisplayStyle == ToolStripItemDisplayStyle.Text)
         {
             float dpi = (e.Item.GetCurrentParent()?.DeviceDpi ?? 96) / 96f;
             int inset = (int)Math.Round(4 * dpi);
@@ -445,7 +447,7 @@ internal sealed class EditorToolStripRenderer : ToolStripProfessionalRenderer
             e.TextFormat |= TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
                 TextFormatFlags.NoPadding | TextFormatFlags.SingleLine;
         }
-        else if (e.Item.GetCurrentParent()?.IsDropDown != true && e.Item.DisplayStyle == ToolStripItemDisplayStyle.ImageAndText)
+        else if (e.Item is not ToolStripLabel && e.Item.GetCurrentParent()?.IsDropDown != true && e.Item.DisplayStyle == ToolStripItemDisplayStyle.ImageAndText)
         {
             float dpi = (e.Item.GetCurrentParent()?.DeviceDpi ?? 96) / 96f;
             bool rtl = e.Item.RightToLeft == RightToLeft.Yes;
@@ -492,6 +494,9 @@ internal sealed class EditorToolStripRenderer : ToolStripProfessionalRenderer
         if (EditorIcons.HasIcon(e.Item))
         {
             Color ink = Foreground(e.Item);
+            if (palette.IsClaude && !PaintingCoverage && e.Item.Enabled && e.Item.GetCurrentParent()?.IsDropDown == false &&
+                states.TryGetValue(e.Item, out Feedback? state))
+                ink = CaptureDrawing.Blend(ink, palette.Accent, Math.Max(state.Selected.Value, state.Hover.Value));
             EditorIcons.Draw(e.Graphics, imageBounds, e.Item.Tag as ShapeType?, e.Item.Name ?? "", ink);
         }
         else if (PaintingCoverage) e.Graphics.FillRectangle(Brushes.Black, imageBounds);

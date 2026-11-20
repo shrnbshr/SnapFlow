@@ -9,10 +9,8 @@ namespace ShareX.Roll;
 public sealed partial class MainForm
 {
     private readonly Dictionary<Keys, CaptureModeButton> modeButtons = new();
-    private readonly Label previewTitle = new() { Text = L("Preview"), AutoSize = true, Anchor = AnchorStyles.Left };
-    private readonly Label previewHint = new() { Text = L("Waiting"), AutoSize = true, Anchor = AnchorStyles.Left };
     private TableLayoutPanel workspace = null!;
-    private TableLayoutPanel previewFrame = null!;
+    private PreviewSurface previewFrame = null!;
     private CapturePalette appearancePalette = CapturePalette.Current;
     private bool? frameUsesDarkMode;
     private WindowBackdrop? windowBackdrop;
@@ -54,10 +52,9 @@ public sealed partial class MainForm
     private void UpdateShortcutLabel(Keys key, HotkeyInfo hotkey)
     {
         if (!modeButtons.TryGetValue(key, out CaptureModeButton? button)) return;
-        button.Shortcut = hotkey.Hotkey == Keys.None ? L("NoShortcut") : hotkey.Status == HotkeyStatus.Registered
-            ? hotkey.ToString().Replace(" + ", "+") : L("ShortcutUnavailable");
+        button.Shortcut = hotkey.Hotkey != Keys.None && hotkey.Status == HotkeyStatus.Registered
+            ? hotkey.ToString().Replace(" + ", "+") : string.Empty;
         button.AccessibleDescription = button.Shortcut;
-        button.Invalidate();
     }
 
     private void AppearancePreferenceChanged(object sender, UserPreferenceChangedEventArgs e)
@@ -83,21 +80,15 @@ public sealed partial class MainForm
         ApplyWindowFrameAppearance();
         BackColor = palette.Background;
         PaintContainers(workspace, palette, palette.Background);
-        UpdateCaptureSidebarWidth();
-        CaptureTypography.ApplyDescription(captureTip, Font, palette);
         CaptureTypography.ApplyDescription(status, Font, palette);
-        CaptureTypography.ApplyDescription(previewHint, Font, palette);
-        PaintContainers(previewFrame, palette, palette.Surface);
-        ((PreviewSurface)previewFrame).Palette = palette;
+        previewFrame.Palette = palette;
         previewFrame.Invalidate();
         preview.BackColor = palette.Canvas;
         ((PreviewCanvas)preview).Palette = palette;
         preview.ApplyViewportAppearance();
-        foreach (CaptureModeButton button in modeButtons.Values) { button.Palette = palette; button.Invalidate(); }
-        palette.StyleButton(copy);
-        palette.StyleButton(save, true);
-        palette.StyleButton(edit);
-        palette.StyleButton(settingsButton);
+        foreach (CaptureModeButton button in modeButtons.Values.Append(edit).Append(copy).Append(save).Append(settingsButton))
+            button.Palette = palette;
+        workspaceTips.Invalidate();
         preview.Invalidate();
         if (scrollForm is { IsDisposed: false }) ApplyScrollingColors(scrollForm, palette);
         // The library theme walks all child controls. Restore the settings surfaces afterwards.

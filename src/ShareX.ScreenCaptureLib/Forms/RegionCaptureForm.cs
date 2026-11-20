@@ -48,6 +48,8 @@ namespace ShareX.ScreenCaptureLib
         public event Action<Bitmap> PrintImageRequested;
         // Optional host customization; the upstream editor remains unchanged when no handler is attached.
         public event Action<ToolStrip> EditorToolbarCreated;
+        internal event Action<TextDrawingInputBox> EditorTextDialogCreated;
+        internal Func<DialogResult> EditorCloseConfirmation { get; set; }
         public event Action EditorStateChanged;
         public event Action<string> EditorFeedback;
         public bool IsEditorCropPending => ShapeManager?.CurrentShape is CropTool;
@@ -64,6 +66,7 @@ namespace ShareX.ScreenCaptureLib
         internal void NotifyEditorFeedback(string text) => EditorFeedback?.Invoke(text);
 
         internal void OnEditorToolbarCreated(ToolStrip toolbar) => EditorToolbarCreated?.Invoke(toolbar);
+        internal void OnEditorTextDialogCreated(TextDrawingInputBox dialog) => EditorTextDialogCreated?.Invoke(dialog);
 
         public RegionCaptureOptions Options { get; set; }
         public Rectangle ScreenBounds { get; set; }
@@ -658,16 +661,16 @@ namespace ShareX.ScreenCaptureLib
             if (IsImageModified)
             {
                 Pause();
-                DialogResult dialogResult = MessageBox.Show(this, Resources.RegionCaptureForm_SaveChangesBeforeClosingEditor,
-                    Resources.RegionCaptureForm_ShowExitConfirmation_ShareXImageEditor, MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
-
-                if (dialogResult == DialogResult.Yes)
+                try
                 {
-                    OnSaveImageRequested();
-                }
+                    DialogResult dialogResult = EditorCloseConfirmation?.Invoke() ??
+                        MessageBox.Show(this, Resources.RegionCaptureForm_SaveChangesBeforeClosingEditor,
+                            Resources.RegionCaptureForm_ShowExitConfirmation_ShareXImageEditor, MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
 
-                result = dialogResult != DialogResult.Cancel;
-                Resume();
+                    if (dialogResult == DialogResult.Yes) OnSaveImageRequested();
+                    result = dialogResult != DialogResult.Cancel;
+                }
+                finally { Resume(); }
             }
 
             return result;

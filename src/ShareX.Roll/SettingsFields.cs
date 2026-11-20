@@ -63,6 +63,7 @@ internal sealed class SettingsNumericInput : NumericUpDown
 internal sealed class SettingsNumberField : Control
 {
     private readonly NumericUpDown number;
+    private readonly Control? nativeButtons;
     private readonly System.Windows.Forms.Timer repeat = new() { Interval = 400 };
     private CapturePalette palette = CapturePalette.Light;
     private int pressed;
@@ -78,10 +79,44 @@ internal sealed class SettingsNumberField : Control
         number.BorderStyle = BorderStyle.None;
         number.Margin = Padding.Empty;
         Controls.Add(number);
+        if (number is not SettingsNumericInput)
+        {
+            nativeButtons = number.Controls.Cast<Control>().FirstOrDefault(part => part is not TextBox);
+            ClipNativeButtons();
+        }
         number.HandleCreated += (_, _) => PerformLayout();
         number.GotFocus += (_, _) => Invalidate();
         number.LostFocus += (_, _) => Invalidate();
         repeat.Tick += (_, _) => { repeat.Interval = 80; Step(); };
+    }
+
+    private void ClipNativeButtons()
+    {
+        // Keep the original number field and callbacks, but give its window the edit's
+        // hit region so the custom spinner handles the mouse outside that region.
+        TextBox? edit = number.Controls.OfType<TextBox>().FirstOrDefault();
+        if (edit == null) return;
+        Rectangle clip = Rectangle.Empty;
+        bool clipping = false;
+        void Update()
+        {
+            if (clipping || number.IsDisposed || !number.IsHandleCreated) return;
+            Rectangle next = Rectangle.Intersect(edit.Bounds, number.ClientRectangle);
+            if (next.IsEmpty || next == clip) return;
+            clipping = true;
+            try
+            {
+                clip = next;
+                Region? previous = number.Region;
+                number.Region = new Region(next);
+                previous?.Dispose();
+            }
+            finally { clipping = false; }
+        }
+        number.HandleCreated += (_, _) => { clip = Rectangle.Empty; Update(); };
+        number.Layout += (_, _) => Update();
+        edit.SizeChanged += (_, _) => Update();
+        edit.LocationChanged += (_, _) => Update();
     }
 
     internal void ApplyPalette(CapturePalette value)
@@ -106,8 +141,11 @@ internal sealed class SettingsNumberField : Control
         base.OnLayout(e);
         if (number == null) return;
         int inset = Scale(ButtonSpacing.Horizontal), stepper = Scale(28);
+        // Standard UpDownBase reserves width for its native spinner even when hidden.
+        // The edit has the same space as the clipped field; the outer control draws our spinner.
+        int reserved = nativeButtons?.Width ?? 0;
         number.Bounds = new Rectangle(inset, (Height - number.PreferredHeight) / 2,
-            Math.Max(1, Width - inset - stepper - Scale(5)), number.PreferredHeight);
+            Math.Max(1, Width - inset - stepper - Scale(5)) + reserved, number.PreferredHeight);
         ArrangeEdit();
     }
 
@@ -125,7 +163,7 @@ internal sealed class SettingsNumberField : Control
             if (child is TextBox edit)
             {
                 edit.AutoSize = false;
-                edit.Bounds = new Rectangle(0, 0, number.ClientSize.Width, number.ClientSize.Height);
+                if (nativeButtons == null) edit.Bounds = new Rectangle(0, 0, number.ClientSize.Width, number.ClientSize.Height);
             }
             else child.Visible = false;
         }
@@ -138,12 +176,19 @@ internal sealed class SettingsNumberField : Control
         using (SolidBrush background = new(Parent?.BackColor ?? palette.Surface)) g.FillRectangle(background, ClientRectangle);
         g.SmoothingMode = SmoothingMode.AntiAlias;
         RectangleF face = new(s, s, Width - 2 * s, Height - 2 * s);
-        using GraphicsPath shape = CaptureDrawing.Rounded(face, 10 * s);
+        float radius = 10 * s;
+        if (palette.IsClaude) CaptureDrawing.InsetAntialiasedFace(ref face, ref radius);
+        using GraphicsPath shape = CaptureDrawing.Rounded(face, radius);
         using SolidBrush fill = new(palette.Canvas);
-        using Pen edge = new(number.ContainsFocus ? palette.Accent : palette.Border, (number.ContainsFocus ? 1.5f : 1) * s);
+        bool focused = number.ContainsFocus;
         g.FillPath(fill, shape);
-        if (palette.IsClaude && number.ContainsFocus) CaptureDrawing.DrawInsideBorder(g, face, 10 * s, edge.Color, edge.Width);
-        else if (number.ContainsFocus || SystemInformation.HighContrast) g.DrawPath(edge, shape);
+        if (palette.IsClaude)
+            CaptureDrawing.DrawInsideBorder(g, face, radius, focused ? palette.Accent : palette.FieldBorder, (focused ? 1.5f : 1) * s);
+        else if (focused || SystemInformation.HighContrast)
+        {
+            using Pen edge = new(focused ? palette.Accent : palette.Border, (focused ? 1.5f : 1) * s);
+            g.DrawPath(edge, shape);
+        }
         float x = Width - 15 * s;
         using Pen arrow = new(hovering || pressed != 0 ? palette.Text : palette.Secondary, 1.4f * s) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
         float top = Height / 2f - 5 * s, bottom = Height / 2f + 5 * s;
@@ -206,7 +251,7 @@ internal sealed class SettingsChoice : ComboBox
         CloseMenu();
         palette = value;
         this.transparencyEnabled = transparencyEnabled;
-        BackColor = value.Canvas;
+        BackColor = value.IsClaude && Parent?.BackColor == value.Background ? value.Surface : value.Canvas;
         ForeColor = value.Text;
         ButtonPointerBounds.ApplyInset(this, value.IsClaude, 10);
         Invalidate();
@@ -296,16 +341,27 @@ internal sealed class SettingsChoice : ComboBox
         using (SolidBrush background = new(Parent?.BackColor ?? palette.Surface)) g.FillRectangle(background, ClientRectangle);
         g.SmoothingMode = SmoothingMode.AntiAlias;
         RectangleF face = new(s, s, Width - 2 * s, Height - 2 * s);
-        using GraphicsPath shape = CaptureDrawing.Rounded(face, 10 * s);
-        using SolidBrush fill = new(hovering ? palette.Hover : palette.Canvas);
-        using Pen edge = new(Focused || menu?.Visible == true ? palette.Accent : palette.Border, (Focused ? 1.5f : 1) * s);
+        float radius = 10 * s;
+        if (palette.IsClaude) CaptureDrawing.InsetAntialiasedFace(ref face, ref radius);
+        using GraphicsPath shape = CaptureDrawing.Rounded(face, radius);
+        bool active = Focused || menu?.Visible == true;
+        Color field = palette.IsClaude
+            ? CaptureDrawing.Blend(BackColor, palette.Hover, hovering && !active ? .4f : 0)
+            : hovering ? palette.Hover : palette.Canvas;
+        using SolidBrush fill = new(field);
         g.FillPath(fill, shape);
-        if (palette.IsClaude) CaptureDrawing.DrawInsideBorder(g, face, 10 * s, edge.Color, edge.Width);
-        else if (Focused && ShowFocusCues || menu?.Visible == true || SystemInformation.HighContrast) g.DrawPath(edge, shape);
+        if (palette.IsClaude)
+            CaptureDrawing.DrawInsideBorder(g, face, radius, active ? palette.Accent : palette.FieldBorder, (active ? 1.5f : 1) * s);
+        else if (Focused && ShowFocusCues || menu?.Visible == true || SystemInformation.HighContrast)
+        {
+            using Pen edge = new(active ? palette.Accent : palette.Border, (Focused ? 1.5f : 1) * s);
+            g.DrawPath(edge, shape);
+        }
         TextRenderer.DrawText(g, Text, Font, new Rectangle((int)(ButtonSpacing.Horizontal * s), 0, Math.Max(0, Width - (int)((ButtonSpacing.Horizontal + 34) * s)), Height), Enabled ? palette.Text : palette.Secondary,
             TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.PreserveGraphicsClipping | TextFormatFlags.PreserveGraphicsTranslateTransform | UiLanguage.TextDirection);
         float x = Width - 15 * s, y = Height / 2f;
-        using Pen arrow = new(palette.Secondary, 1.5f * s) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
+        using Pen arrow = new(palette.IsClaude && active ? palette.Accent : palette.Secondary, 1.5f * s)
+            { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
         g.DrawLines(arrow, new PointF[] { new(x - 3 * s, y - 1.5f * s), new(x, y + 1.5f * s), new(x + 3 * s, y - 1.5f * s) });
     }
 

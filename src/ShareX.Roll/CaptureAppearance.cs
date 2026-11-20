@@ -17,15 +17,16 @@ internal sealed record CapturePalette(Color Background, Color Surface, Color Can
         Hex("#F3F3F5"), Hex("#B3B3BC"), Hex("#8AB4FF"), Hex("#10213B"), Hex("#3D3D44"), Hex("#323239"), Hex("#2B3D5A"));
 
     internal static CapturePalette ClaudeLight { get; } = new(Hex("#FAF9F5"), Hex("#F1EEE5"), Hex("#FAF9F5"),
-        Hex("#141413"), Hex("#625F56"), Hex("#99452F"), Hex("#FAF9F5"), Hex("#E1DDD2"), Hex("#EAE5D9"), Hex("#F4E3D8"))
-        { Style = SoftwareStyle.Claude, IllustrationAccent = Hex("#D97757") };
+        Hex("#141413"), Hex("#625F56"), Hex("#99452F"), Hex("#FAF9F5"), Hex("#E1DDD2"), Hex("#E8E6DC"), Hex("#F4E3D8"))
+        { Style = SoftwareStyle.Claude, IllustrationAccent = Hex("#D97757"), FieldBorder = Hex("#837E71") };
     internal static CapturePalette ClaudeDark { get; } = new(Hex("#1C1B19"), Hex("#2A2723"), Hex("#1C1B19"),
-        Hex("#FAF9F5"), Hex("#C9BFB1"), Hex("#F3A48A"), Hex("#1C1B19"), Hex("#4D453C"), Hex("#38322B"), Hex("#453028"))
-        { Style = SoftwareStyle.Claude, IllustrationAccent = Hex("#F3A48A") };
+        Hex("#FAF9F5"), Hex("#B0AEA5"), Hex("#F3A48A"), Hex("#1C1B19"), Hex("#4D453C"), Hex("#38322B"), Hex("#453028"))
+        { Style = SoftwareStyle.Claude, IllustrationAccent = Hex("#F3A48A"), FieldBorder = Hex("#887E71") };
 
     internal SoftwareStyle Style { get; private init; }
     internal bool IsClaude => Style == SoftwareStyle.Claude;
     internal Color IllustrationAccent { get; private init; }
+    internal Color FieldBorder { get; private init; }
     internal bool AllowsTransparency(bool enabled) => enabled && !IsClaude;
 
     internal static CapturePalette Current
@@ -247,7 +248,8 @@ internal static class CaptureButtonPainter
         g.FillPath(fill, path);
         if (focus || SystemInformation.HighContrast || p.IsClaude && !quiet && !textAction)
         {
-            Color edge = matte ? Color.Black : focus ? p.Accent : p.Border;
+            Color edge = matte ? Color.Black : focus ? p.Accent : p.IsClaude && button.Enabled
+                ? CaptureDrawing.Blend(p.Border, p.FieldBorder, state.Hover.Value) : p.Border;
             if (p.IsClaude) CaptureDrawing.DrawInsideBorder(g, face, radius, edge, borderWidth);
             else
             {
@@ -264,9 +266,11 @@ internal static class CaptureButtonPainter
             Rectangle caption = Rectangle.Round(face);
             caption.Inflate(-(int)Math.Round(ButtonSpacing.Horizontal * s), 0);
             Color textInk = matte ? ink : primary ? p.Accent : CaptureDrawing.Blend(ink, p.Accent, emphasis);
-            CaptureDrawing.DrawUnderlinedText(g, button.Text, button.Font, caption, textInk,
-                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis |
-                TextFormatFlags.NoPadding | TextFormatFlags.SingleLine | UiLanguage.TextDirection, s, emphasis);
+            TextFormatFlags flags = TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis |
+                TextFormatFlags.NoPadding | TextFormatFlags.SingleLine | UiLanguage.TextDirection;
+            Color lineInk = matte || primary ? textInk : CaptureDrawing.Blend(p.Secondary, p.Accent, emphasis);
+            if (button.Enabled) CaptureDrawing.DrawUnderlinedText(g, button.Text, button.Font, caption, textInk, lineInk, flags, s, emphasis);
+            else TextRenderer.DrawText(g, button.Text, button.Font, caption, textInk, flags);
         }
         else PaintContent(button, state, g, ink, matte);
     }
@@ -318,7 +322,7 @@ internal static class CaptureButtonPainter
 
 internal static class CaptureDrawing
 {
-    internal static void DrawUnderlinedText(Graphics graphics, string? text, Font font, Rectangle bounds, Color ink,
+    internal static void DrawUnderlinedText(Graphics graphics, string? text, Font font, Rectangle bounds, Color ink, Color lineInk,
         TextFormatFlags flags, float scale, float emphasis)
     {
         if (string.IsNullOrEmpty(text) || bounds.Width <= 0 || bounds.Height <= 0) return;
@@ -331,8 +335,9 @@ internal static class CaptureDrawing
         int thickest = Math.Max(1, (int)MathF.Round(2 * scale));
         int thickness = Math.Max(1, (int)MathF.Round((1 + emphasis) * scale));
         int top = (flags & TextFormatFlags.VerticalCenter) != 0 ? bounds.Top + (bounds.Height - size.Height) / 2 : bounds.Top;
-        int y = Math.Clamp(top + size.Height, bounds.Top, Math.Max(bounds.Top, bounds.Bottom - thickest));
-        using SolidBrush line = new(ink);
+        int gap = Math.Max(1, (int)MathF.Round(scale));
+        int y = Math.Clamp(top + size.Height + gap, bounds.Top, Math.Max(bounds.Top, bounds.Bottom - thickest));
+        using SolidBrush line = new(lineInk);
         // Fill whole pixel rows so high-DPI antialiasing does not soften the line ends.
         GraphicsState state = graphics.Save();
         graphics.SmoothingMode = SmoothingMode.None;
@@ -355,6 +360,18 @@ internal static class CaptureDrawing
         return path;
     }
 
+    internal static int BorderPixelWidth(float thickness) =>
+        Math.Max(1, (int)MathF.Round(thickness, MidpointRounding.AwayFromZero));
+
+    internal static void InsetAntialiasedFace(ref RectangleF bounds, ref float radius)
+    {
+        // The native hit region has a hard edge. Leave room for two device pixels between it
+        // and the painted contour so it cannot cut off the curve's antialiasing.
+        const float clearance = 2;
+        bounds.Inflate(-clearance, -clearance);
+        radius = Math.Max(1, radius - clearance);
+    }
+
     internal static void DrawInsideBorder(Graphics graphics, RectangleF bounds, float radius, Color color, float thickness)
     {
         // A centered pen straddles the HWND region and its surviving half can
@@ -362,7 +379,7 @@ internal static class CaptureDrawing
         RectangleF outer = RectangleF.FromLTRB(MathF.Ceiling(bounds.Left), MathF.Ceiling(bounds.Top),
             MathF.Floor(bounds.Right), MathF.Floor(bounds.Bottom));
         if (outer.Width <= 0 || outer.Height <= 0) return;
-        float width = Math.Max(1, MathF.Round(thickness, MidpointRounding.AwayFromZero));
+        int width = BorderPixelWidth(thickness);
         using GraphicsPath ring = radius > 0 ? Rounded(outer, radius) : new GraphicsPath();
         if (radius <= 0) ring.AddRectangle(outer);
         ring.FillMode = FillMode.Alternate;
@@ -429,10 +446,6 @@ internal static class CaptureDrawing
 internal sealed class CaptureModeButton : Button
 {
     private readonly UiTween hover, press;
-    private readonly ButtonElevation elevation = new();
-    private Font? titleFont, shortcutFont;
-    private int titleHeight, shortcutHeight;
-    private string? shortcutCulture;
     private CapturePalette palette = CapturePalette.Light;
     internal string Kind { get; init; } = "region";
     internal string Shortcut { get; set; } = "";
@@ -441,10 +454,9 @@ internal sealed class CaptureModeButton : Button
         get => palette;
         set
         {
-            if (palette.IsClaude != value.IsClaude || value.IsClaude && shortcutCulture != UiLanguage.Culture.Name)
-                ReleaseTextMetrics();
             palette = value;
-            ButtonPointerBounds.Apply(this, palette.IsClaude, compact: true, radius: 8);
+            ButtonPointerBounds.ApplyInset(this, true, 9);
+            Invalidate();
         }
     }
 
@@ -454,6 +466,8 @@ internal sealed class CaptureModeButton : Button
         FlatStyle = FlatStyle.Flat;
         FlatAppearance.BorderSize = 0;
         Cursor = Cursors.Hand;
+        Size = new Size(44, 44);
+        Margin = new Padding(0, 0, 4, 0);
         hover = new(this, Invalidate);
         press = new(this, Invalidate);
     }
@@ -489,71 +503,34 @@ internal sealed class CaptureModeButton : Button
     {
         CapturePalette p = Palette;
         float s = DeviceDpi / 96f;
-        g.SmoothingMode = SmoothingMode.AntiAlias;
         Color parent = Parent?.BackColor ?? p.Background;
         bool glassParent = parent == p.Background;
         g.Clear(matte ? (glassParent ? Color.White : Color.Black) : parent);
-        RectangleF bounds = p.IsClaude ? ButtonElevation.CompactFaceBounds(ClientSize, s) : ButtonElevation.FaceBounds(ClientSize, s);
-        RectangleF face = bounds;
-        float verticalInset = 4 * s * (UiMotion.Enabled && !p.IsClaude ? 1 - hover.Value : 0);
-        face.Inflate(-press.Value * s, -verticalInset - press.Value * s);
-        elevation.PaintShadow(g, ClientSize, s, p.Background.GetBrightness() < .5f,
-            Enabled && !SystemInformation.HighContrast && !p.IsClaude ? hover.Value * (1 - press.Value) : 0, unified: true);
-        float radius = p.IsClaude ? 8 * s : ButtonElevation.Radius(face, s);
+        if (Width <= 4 * s || Height <= 4 * s) return;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        RectangleF face = new(s, s, Width - 2 * s, Height - 2 * s);
+        float radius = 9 * s;
+        CaptureDrawing.InsetAntialiasedFace(ref face, ref radius);
+        float hoverAmount = Enabled ? hover.Value : 0;
+        float pressAmount = Enabled ? press.Value : 0;
+        Color fill = CaptureDrawing.Blend(CaptureDrawing.Blend(parent, p.Hover, hoverAmount), p.Tint, pressAmount);
         using GraphicsPath path = CaptureDrawing.Rounded(face, radius);
-        Color background = CaptureDrawing.Blend(parent, ButtonElevation.Surface(p), hover.Value);
-        background = CaptureDrawing.Blend(background, p.Hover, press.Value * .10f);
-        if (matte) background = CaptureButtonPainter.Coverage(glassParent ? (1 - hover.Value) * (1 - press.Value * .10f) : 0);
-        using SolidBrush fill = new(background);
-        g.FillPath(fill, path);
-        if (p.IsClaude)
-        {
-            using Pen divider = new(p.Border, s);
-            g.DrawLine(divider, face.Left + 8 * s, face.Bottom - .5f * s, face.Right - 8 * s, face.Bottom - .5f * s);
-        }
+        using SolidBrush brush = new(matte ? CaptureButtonPainter.Coverage(glassParent ? (1 - hoverAmount) * (1 - pressAmount) : 0) : fill);
+        g.FillPath(brush, path);
         if (Focused && ShowFocusCues)
-        {
-            if (p.IsClaude) CaptureDrawing.DrawInsideBorder(g, face, radius, p.Accent, 1.5f * s);
-            else
-            {
-                using Pen focus = new(matte ? Color.Black : p.Accent, 1.5f * s);
-                g.DrawPath(focus, path);
-            }
-        }
-        Color ink = matte ? Color.Black : p.Text;
-        Color secondary = matte ? Color.Black : p.Secondary;
-        float cy = Height / 2f + press.Value * .5f * s;
-        Color iconInk = CaptureDrawing.Blend(p.Secondary, p.Accent, hover.Value);
-        if (matte) iconInk = Color.Black;
-        float leading = p.IsClaude ? ButtonSpacing.Horizontal : ButtonSpacing.Leading;
-        CaptureDrawing.Icon(g, Kind, new RectangleF(bounds.Left + leading * s, cy - 10 * s, 20 * s, 20 * s), iconInk);
-        if (titleFont == null || shortcutFont == null)
-        {
-            titleFont = new(Font.FontFamily, 11, FontStyle.Bold);
-            shortcutFont = p.IsClaude ? CaptureTypography.CreateDescription(Font, 10, p) : new("Segoe UI", 10);
-            shortcutCulture = UiLanguage.Culture.Name;
-            titleHeight = TextRenderer.MeasureText("Ag", titleFont).Height;
-            shortcutHeight = TextRenderer.MeasureText("Ag", shortcutFont).Height;
-        }
-        int textLeft = (int)(bounds.Left + (leading + 20 + ButtonSpacing.IconGap) * s);
-        int textWidth = Math.Max(1, (int)(bounds.Right - ButtonSpacing.Horizontal * s) - textLeft);
-        int gap = (int)Math.Round(6 * s);
-        int top = (int)Math.Round(cy - (titleHeight + gap + shortcutHeight) / 2f);
-        TextRenderer.DrawText(g, Text, titleFont, new Rectangle(textLeft, top, textWidth, titleHeight),
-            ink, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | UiLanguage.TextDirection);
-        TextRenderer.DrawText(g, Shortcut.Replace(" + ", "+"), shortcutFont, new Rectangle(textLeft, top + titleHeight + gap, textWidth, shortcutHeight),
-            secondary, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+            CaptureDrawing.DrawInsideBorder(g, face, radius, matte ? Color.Black : p.Accent, 1.5f * s);
+        Color ink = matte ? Color.Black : Enabled ? CaptureDrawing.Blend(p.Text, p.Accent, Math.Max(hoverAmount, pressAmount)) : p.Secondary;
+        int size = (int)Math.Round(20 * s);
+        Rectangle icon = new((Width - size) / 2, (Height - size) / 2, size, size);
+        if (Kind is "region" or "full" or "scroll")
+            CaptureDrawing.Icon(g, Kind, icon, ink);
+        else
+            EditorIcons.Draw(g, icon, null, Kind, ink);
     }
-    private void ReleaseTextMetrics()
-    {
-        titleFont?.Dispose(); titleFont = null;
-        shortcutFont?.Dispose(); shortcutFont = null;
-    }
-    protected override void OnFontChanged(EventArgs e) { ReleaseTextMetrics(); base.OnFontChanged(e); }
-    protected override void OnDpiChangedAfterParent(EventArgs e) { ReleaseTextMetrics(); base.OnDpiChangedAfterParent(e); }
+
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { elevation.Dispose(); ReleaseTextMetrics(); }
+        if (disposing) { hover.Dispose(); press.Dispose(); }
         base.Dispose(disposing);
     }
 }
@@ -583,24 +560,19 @@ internal sealed partial class PreviewCanvas : PictureBox
         EndReveal();
         base.OnResize(e);
         ResizeViewport();
-        if (Width < 1 || Height < 1) return;
-        using GraphicsPath path = CaptureDrawing.Rounded(new RectangleF(0, 0, Width, Height), 12 * DeviceDpi / 96f);
-        Region? previous = Region;
-        Region = new Region(path);
-        previous?.Dispose();
     }
 
     protected override void OnPaintBackground(PaintEventArgs e)
     {
         // A cached fade paints the complete canvas into the existing WinForms buffer.
-        if (revealFrame == null) base.OnPaintBackground(e);
+        if (revealFrame != null) return;
+        base.OnPaintBackground(e);
     }
 
     protected override void OnPaint(PaintEventArgs e)
     {
         Graphics g = e.Graphics;
         CapturePalette p = Palette;
-        float s = DeviceDpi / 96f;
         SynchronizeImage();
         if (Image != null)
         {
@@ -648,57 +620,10 @@ internal sealed partial class PreviewCanvas : PictureBox
         base.OnPaint(e);
         displayed = null;
         g.SmoothingMode = SmoothingMode.AntiAlias;
-        float x = Width / 2f, y = Height / 2f - 42 * s;
-        bool compact = Height < 240 * s || Width < 320 * s;
-        float factor = compact ? .75f : 1;
-        GraphicsState state = g.Save();
-        g.TranslateTransform(x, y);
-        g.ScaleTransform(s * factor, s * factor);
-        if (p.IsClaude) PaintPaperIllustration(g, p);
-        else PaintPreviewIllustration(g, p);
-        g.Restore(state);
-        using Font title = new(Font.FontFamily, compact ? 13 : 15, FontStyle.Bold);
-        using Font hint = CaptureTypography.CreateDescription(Font, 10.5f, p);
-        TextRenderer.DrawText(g, L("NoScreenshot"), title, new Rectangle(0, (int)(y + 54 * s), Width, (int)(32 * s)), p.Text,
+        using Font hint = CaptureTypography.CreateDescription(Font, 11, p);
+        TextRenderer.DrawText(g, L("ChooseCapture"), hint, ClientRectangle, p.Secondary,
             TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | UiLanguage.TextDirection);
-        TextRenderer.DrawText(g, L("ChooseCapture"), hint, new Rectangle(0, (int)(y + 90 * s), Width, (int)(28 * s)), p.Secondary,
-            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | UiLanguage.TextDirection);
-        if (p.IsClaude) PaintViewportChrome(g);
-    }
-
-    private static void PaintPaperIllustration(Graphics g, CapturePalette p)
-    {
-        using SolidBrush paper = new(p.Surface);
-        using Pen ink = new(p.Secondary, 1.2f) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
-        using Pen crop = new(p.IllustrationAccent, 1.7f) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
-        PointF[] back = [new(-35, -25), new(25, -33), new(31, 14), new(-30, 21)];
-        g.FillPolygon(paper, back);
-        g.DrawPolygon(ink, back);
-        using GraphicsPath front = CaptureDrawing.Rounded(new RectangleF(-25, -19, 61, 48), 4);
-        g.FillPath(paper, front);
-        g.DrawPath(ink, front);
-        g.DrawLine(ink, -17, -8, 5, -8);
-        g.DrawLine(ink, -17, -2, -7, -2);
-        g.DrawLines(ink, [new(-17, 19), new(-6, 8), new(3, 16), new(13, 6), new(25, 18)]);
-        g.DrawLines(crop, [new(24, -10), new(24, -18), new(33, -18)]);
-        g.DrawLines(crop, [new(-32, 23), new(-32, 33), new(-22, 33)]);
-    }
-
-    private static void PaintPreviewIllustration(Graphics g, CapturePalette p)
-    {
-        using SolidBrush card = new(p.Surface);
-        using Pen edge = new(p.Border, 1.5f);
-        using GraphicsPath back = CaptureDrawing.Rounded(new RectangleF(-37, -31, 68, 50), 10);
-        g.FillPath(card, back);
-        g.DrawPath(edge, back);
-        using GraphicsPath front = CaptureDrawing.Rounded(new RectangleF(-27, -21, 68, 50), 10);
-        using SolidBrush tint = new(p.Tint);
-        g.FillPath(tint, front);
-        using Pen accent = new(p.Accent, 1.6f) { LineJoin = LineJoin.Round };
-        g.DrawPath(accent, front);
-        using SolidBrush dot = new(p.Accent);
-        g.FillEllipse(dot, -15, -9, 7, 7);
-        g.DrawLines(accent, [new(-17, 16), new(-3, 3), new(8, 12), new(16, 5), new(30, 18)]);
+        PaintViewportChrome(g);
     }
 
     private void EndReveal()

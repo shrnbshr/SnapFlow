@@ -34,6 +34,9 @@ namespace ShareX.ScreenCaptureLib
 {
     public class StickerImageListViewRenderer : ImageListView.ImageListViewRenderer
     {
+        internal Color SelectionColor { get; set; }
+        internal Color HoverColor { get; set; }
+
         public override void InitializeGraphics(Graphics g)
         {
             base.InitializeGraphics(g);
@@ -42,6 +45,10 @@ namespace ShareX.ScreenCaptureLib
 
             ImageListView.Colors.SelectedColor1 = ImageListView.Colors.HoverColor1 = ImageListView.Colors.UnFocusedColor1 = Color.FromArgb(252, 221, 132);
             ImageListView.Colors.SelectedColor2 = ImageListView.Colors.HoverColor2 = ImageListView.Colors.UnFocusedColor2 = Color.Transparent;
+            if (!SelectionColor.IsEmpty)
+                ImageListView.Colors.SelectedColor1 = ImageListView.Colors.SelectedColor2 =
+                    ImageListView.Colors.UnFocusedColor1 = ImageListView.Colors.UnFocusedColor2 = SelectionColor;
+            if (!HoverColor.IsEmpty) ImageListView.Colors.HoverColor1 = ImageListView.Colors.HoverColor2 = HoverColor;
 
             ImageListView.BackColor = ShareXResources.Theme.BackgroundColor;
             ImageListView.Colors.BackColor = ShareXResources.Theme.LightBackgroundColor;

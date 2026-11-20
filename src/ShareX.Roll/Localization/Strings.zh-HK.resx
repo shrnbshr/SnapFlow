@@ -43,7 +43,7 @@
     <value>尚無截圖</value>
   </data>
   <data xml:space="preserve" name="ChooseCapture">
-    <value>從左側選擇截圖方式</value>
+    <value>從上方選擇截圖方式</value>
   </data>
   <data xml:space="preserve" name="CopyImage">
     <value>複製圖片</value>
@@ -296,4 +296,7 @@
   <data xml:space="preserve" name="SoftwareStyleDefault"><value>預設風格</value></data>
   <data xml:space="preserve" name="SoftwareStyleClaude"><value>Claude 風格</value></data>
   <data xml:space="preserve" name="SoftwareStyleSolid"><value>Claude 風格使用實色背景。</value></data>
+  <data name="EditorCloseHeading" xml:space="preserve"><value>儲存修改？</value></data>
+  <data name="EditorCloseDetail" xml:space="preserve"><value>關閉編輯器後，這張擷取畫面未儲存的修改將會遺失。</value></data>
+  <data name="EditorCloseDiscard" xml:space="preserve"><value>不儲存</value></data>
 </root>

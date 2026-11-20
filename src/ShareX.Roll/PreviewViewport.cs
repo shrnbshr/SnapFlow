@@ -339,8 +339,16 @@ internal sealed partial class PreviewCanvas
         }
         if (Focused && ShowFocusCues)
         {
-            using Pen pen = new(Palette.Accent, D(1.5f));
-            g.DrawRectangle(pen, 2, 2, Math.Max(1, Width - 5), Math.Max(1, Height - 5));
+            if (Palette.IsClaude)
+            {
+                RectangleF outline = new(D(1), D(1), Width - D(2), Height - D(2));
+                CaptureDrawing.DrawInsideBorder(g, outline, D(11), Palette.Accent, D(1.5f));
+            }
+            else
+            {
+                using Pen pen = new(Palette.Accent, D(1.5f));
+                g.DrawRectangle(pen, 2, 2, Math.Max(1, Width - 5), Math.Max(1, Height - 5));
+            }
         }
     }
 
@@ -566,11 +574,13 @@ internal sealed class PreviewZoomBar : Panel
 
     internal void ApplyLanguage()
     {
-        percent.AccessibleDescription = L("PreviewFitImage");
+        string fitHint = L("PreviewFitImage");
+        if (viewport.Image is { } image) fitHint = $"{fitHint} · {LF("Pixels", image.Width, image.Height)}";
+        percent.AccessibleDescription = fitHint;
         width.Text = L(reading ? "PreviewFitImage" : "PreviewFitWidth");
         tips.SetToolTip(minus, L("PreviewZoomOut") + " (−)");
         tips.SetToolTip(plus, L("PreviewZoomIn") + " (+)");
-        tips.SetToolTip(percent, L("PreviewFitImage") + " (0)");
+        tips.SetToolTip(percent, fitHint + " (0)");
         tips.SetToolTip(width, L(reading ? "PreviewZoomHelp" : "PreviewReadingHelp"));
         tips.SetToolTip(this, L(reading ? "PreviewReadingHelp" : "PreviewZoomHelp"));
         UiLanguage.ApplyTextDirection(this);

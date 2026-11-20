@@ -32,7 +32,6 @@ internal static class SettingsLayout
 
     internal static FlowLayoutPanel ConfigureOption(TableLayoutPanel row, Label title, Label hint, Control accessory)
     {
-        if (row is SettingsGroup group) group.IsOptionRow = true;
         row.AutoSize = true;
         row.AutoSizeMode = AutoSizeMode.GrowAndShrink;
         row.MinimumSize = new Size(0, RowHeight);

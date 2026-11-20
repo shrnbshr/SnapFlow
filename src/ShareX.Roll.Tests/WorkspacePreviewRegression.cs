@@ -152,7 +152,8 @@ internal static class WorkspacePreviewRegression
             Bitmap image = Field<Bitmap>(main, "result");
             Check(!ReferenceEquals(seed, image) && ReferenceEquals(image, preview.Image), "main preview owns the new scrolling image");
             Check(image.Height > area.Height * 2, "real scrolling produces a long image");
-            Check(Field<Label>(main, "previewHint").Text.Contains(image.Height.ToString()), "dimensions update when replacing an existing result");
+            Check(preview.Controls.Find("previewZoomPercent", true).Single().AccessibleDescription!.Contains(image.Height.ToString()),
+                "the zoom control reports the new image dimensions");
             Check(Field<Button>(main, "copy").Enabled && Field<Button>(main, "save").Enabled, "main copy and save actions are enabled");
             Check(!Application.OpenForms.OfType<ScrollingCaptureForm>().Any(), "capture form and its manager are disposed after transfer");
             using (Bitmap expected = (Bitmap)image.Clone())

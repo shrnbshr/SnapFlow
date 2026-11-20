@@ -138,7 +138,10 @@ internal static class InlineScrollingRegression
                     Control last = Find<Control>(editor, "cbAutoUpload");
                     viewport.ScrollControlIntoView(last);
                     Check(viewport.RectangleToScreen(viewport.ClientRectangle).Contains(last.RectangleToScreen(last.ClientRectangle)), "last scrolling option remains reachable");
-                    Check(page.RectangleToScreen(page.ClientRectangle).Contains(Find<Button>(page, "saveSettingsButton").RectangleToScreen(Find<Button>(page, "saveSettingsButton").ClientRectangle)), "save footer stays visible while expanded");
+                    Button saveButton = Find<Button>(page, "saveSettingsButton");
+                    viewport.ScrollControlIntoView(saveButton);
+                    Check(viewport.RectangleToScreen(viewport.ClientRectangle).Contains(saveButton.RectangleToScreen(saveButton.ClientRectangle)),
+                        "the footer is reachable at the end of the settings scroll area");
                     viewport.AutoScrollPosition = new Point(0, row.Top);
                     Render(main, output, $"expanded-{language}-{mode}-{(minimum ? "minimum" : "normal")}");
                 }

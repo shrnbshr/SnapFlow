@@ -36,8 +36,8 @@ internal static class UiRegression
             Console.WriteLine($"METRIC: startup settings bounds={settings.Bounds}, dpi={main.DeviceDpi}");
             Check(settings.Width <= 160 * main.DeviceDpi / 96,
                 "startup settings button stays compact at the current display scale");
-            Check(settings.Width >= TextRenderer.MeasureText(settings.Text, settings.Font, Size.Empty, TextFormatFlags.NoPadding | TextFormatFlags.SingleLine).Width + 32 * main.DeviceDpi / 96,
-                "startup settings button has room for its icon and label");
+            Check(settings is CaptureModeButton && settings.AccessibleName == settings.Text,
+                "startup settings icon provides a localized accessible name");
             main.TopMost = true;
             main.ForceActivate();
             foreach (AppearanceMode mode in new[] { AppearanceMode.Light, AppearanceMode.Dark })
@@ -51,8 +51,8 @@ internal static class UiRegression
                 foreach (CaptureShortcut action in ApplicationPreferences.Actions)
                 {
                     Button button = Find<Button>(main, action.Kind + "Button");
-                    Check(button.Visible && button.Enabled && button.RectangleToScreen(button.ClientRectangle).Right < surface.PointToScreen(Point.Empty).X,
-                        action.Title + " is usable in the left action column");
+                    Check(button.Visible && button.Enabled && button.RectangleToScreen(button.ClientRectangle).Bottom <= surface.PointToScreen(Point.Empty).Y,
+                        action.Title + " is usable in the toolbar above the preview");
                 }
                 Check(surface.Width > 360 * main.DeviceDpi / 96, "preview receives the main content area");
                 Render(main, "main-" + mode);

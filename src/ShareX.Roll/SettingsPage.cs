@@ -37,6 +37,7 @@ internal sealed class SettingsPage : UserControl, IBackdropCachingScope
     private readonly List<ModeGlyph> glyphs = new();
     private readonly MotionToggle motion = new() { Name = "animationsToggle", Size = new Size(46, 28), AccessibleName = L("Motion") };
     private readonly MotionToggle transparency = new() { Name = "transparencyToggle", Size = new Size(46, 28), AccessibleName = L("Transparency") };
+    private readonly Label transparencyTitle = new() { Text = L("Transparency"), AutoSize = true, Margin = Padding.Empty };
     private readonly DescriptionLabel transparencyHint = new() { Name = "transparencyHint", AutoSize = true, Tag = "secondary", Margin = new Padding(0, 2, 0, 0) };
     private readonly SettingsChoice style = new() { Name = "softwareStyleSelector", Width = 220, DropDownWidth = 220 };
     private readonly SettingsChoice language = new() { Name = "languageSelector", Width = 220, DropDownWidth = 380, MaxDropDownItems = 12, Anchor = AnchorStyles.Right, Margin = Padding.Empty };
@@ -120,7 +121,6 @@ internal sealed class SettingsPage : UserControl, IBackdropCachingScope
         }
         Add(appearance);
         SettingsGroup transparencyRow = new() { Name = "transparencyRow", Dock = DockStyle.Top };
-        Label transparencyTitle = new() { Text = L("Transparency"), AutoSize = true, Margin = Padding.Empty };
         transparencyHint.Font = new Font(Font.FontFamily, 10);
         FlowLayoutPanel transparencyCaption = SettingsLayout.ConfigureOption(transparencyRow, transparencyTitle, transparencyHint, transparency);
         transparencyCaption.Name = "transparencyCaption";
@@ -458,6 +458,8 @@ internal sealed class SettingsPage : UserControl, IBackdropCachingScope
         UiMotion.UserEnabled = draft.AnimationsEnabled;
         CapturePalette palette = PreviewPalette;
         SettingsColors.Apply(this, palette, save, () => draft.TransparencyEnabled);
+        scrollingReveal.UpdateBorderClip();
+        if (palette.IsClaude && !transparency.Enabled) transparencyTitle.ForeColor = palette.Secondary;
         scrollHost.ApplyPalette(palette);
         foreach (ModeGlyph glyph in glyphs) { glyph.Ink = palette.Secondary; glyph.Invalidate(); }
     }
@@ -579,11 +581,18 @@ internal sealed class SettingsPage : UserControl, IBackdropCachingScope
 internal sealed class SettingsGroup : TableLayoutPanel
 {
     internal bool DrawDividers { get; set; }
-    internal bool IsOptionRow { get; set; }
-    internal CapturePalette Palette { get; set; } = CapturePalette.Light;
-    internal Color SurfaceColor => Palette.IsClaude && IsOptionRow ? Palette.Background : Palette.Surface;
+    internal bool UsesPageDivider { get; private set; }
+    private CapturePalette Palette { get; set; } = CapturePalette.Light;
+    internal Color SurfaceColor => UsesPageDivider ? Palette.Background : Palette.Surface;
     internal SettingsGroup() { DoubleBuffered = true; ResizeRedraw = true; }
     protected override void OnPaintBackground(PaintEventArgs e) => PaintSurface(e.Graphics);
+
+    internal void ApplyPalette(CapturePalette palette, bool inSettingsPage)
+    {
+        Palette = palette;
+        UsesPageDivider = palette.IsClaude && inSettingsPage;
+        Invalidate();
+    }
 
     internal void PaintChildBackground(Control child, Graphics graphics)
     {
@@ -595,15 +604,21 @@ internal sealed class SettingsGroup : TableLayoutPanel
 
     private void PaintSurface(Graphics g)
     {
-        g.SmoothingMode = SmoothingMode.AntiAlias;
         g.Clear(Palette.Background);
-        using Pen pen = new(Palette.Border);
-        if (Palette.IsClaude && IsOptionRow)
+        float scale = DeviceDpi / 96f;
+        if (UsesPageDivider)
         {
-            g.DrawLine(pen, Padding.Left, Height - 1, Width - Padding.Right, Height - 1);
+            int inset = (int)MathF.Round(SettingsLayout.Inset * scale);
+            int thickness = CaptureDrawing.BorderPixelWidth(scale);
+            if (Width > 2 * inset && Height >= thickness)
+            {
+                using SolidBrush divider = new(Palette.Border);
+                g.FillRectangle(divider, inset, Height - thickness, Width - 2 * inset, thickness);
+            }
             return;
         }
-        float scale = DeviceDpi / 96f;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        using Pen pen = new(Palette.Border);
         RectangleF bounds = Palette.IsClaude ? ClientRectangle : new RectangleF(.5f, .5f, Width - 1, Height - 1);
         float radius = (Palette.IsClaude ? 10 : 16) * scale;
         using GraphicsPath path = CaptureDrawing.Rounded(bounds, radius);
@@ -634,6 +649,7 @@ internal sealed class ModeGlyph : Control
 
 internal sealed class ThemeOption : RadioButton
 {
+    internal const int ClaudeCornerRadius = 8;
     internal AppearanceMode Mode { get; init; }
     internal CapturePalette Palette { get; set; } = CapturePalette.Light;
     private readonly UiTween selection, hover;
@@ -650,7 +666,14 @@ internal sealed class ThemeOption : RadioButton
     }
     protected override void OnMouseEnter(EventArgs e) { hover.SpringTo(1, ButtonElevation.ResponseMilliseconds); base.OnMouseEnter(e); }
     protected override void OnMouseLeave(EventArgs e) { hover.SpringTo(0, ButtonElevation.ResponseMilliseconds); base.OnMouseLeave(e); }
-    protected override void OnCheckedChanged(EventArgs e) { base.OnCheckedChanged(e); selection?.SpringTo(Checked ? 1 : 0); Invalidate(); }
+    protected override void OnCheckedChanged(EventArgs e)
+    {
+        base.OnCheckedChanged(e);
+        int value = Checked ? 1 : 0;
+        if (Palette.IsClaude) selection?.SnapTo(value);
+        else selection?.SpringTo(value);
+        Invalidate();
+    }
     protected override void OnGotFocus(EventArgs e) { base.OnGotFocus(e); Invalidate(); }
     protected override void OnLostFocus(EventArgs e) { base.OnLostFocus(e); Invalidate(); }
     internal void PaintBackdrop(Graphics graphics)
@@ -676,25 +699,37 @@ internal sealed class ThemeOption : RadioButton
         g.SmoothingMode = SmoothingMode.AntiAlias;
         g.Clear(p.Background);
         RectangleF face = ButtonElevation.CompactFaceBounds(ClientSize, s);
-        elevation.PaintShadow(g, ClientSize, s, p.Background.GetBrightness() < .5f, Enabled && !p.IsClaude ? hover.Value : 0, compact: true, unified: true);
-        float radius = p.IsClaude ? 8 * s : ButtonElevation.CompactRadius(face, s);
-        using GraphicsPath card = CaptureDrawing.Rounded(face, radius);
-        using SolidBrush fill = new(CaptureDrawing.Blend(CaptureDrawing.Blend(p.Surface, ButtonElevation.Surface(p), hover.Value), p.Tint, selection.Value));
+        if (!p.IsClaude)
+            elevation.PaintShadow(g, ClientSize, s, p.Background.GetBrightness() < .5f, Enabled ? hover.Value : 0, compact: true, unified: true);
+        float radius = p.IsClaude ? ClaudeCornerRadius * s : ButtonElevation.CompactRadius(face, s);
+        RectangleF paintedFace = face;
+        if (p.IsClaude) CaptureDrawing.InsetAntialiasedFace(ref paintedFace, ref radius);
+        using GraphicsPath card = CaptureDrawing.Rounded(paintedFace, radius);
+        Color resting = CaptureDrawing.Blend(p.Surface, ButtonElevation.Surface(p), hover.Value);
+        Color background = p.IsClaude ? (Checked ? p.Tint : resting) : CaptureDrawing.Blend(resting, p.Tint, selection.Value);
+        using SolidBrush fill = new(background);
         g.FillPath(fill, card);
         bool focused = Focused && ShowFocusCues;
-        Color edgeColor = Checked || focused ? p.Accent : p.Border;
-        if (p.IsClaude) CaptureDrawing.DrawInsideBorder(g, face, radius, edgeColor, (focused ? 1.75f : 1) * s);
+        if (p.IsClaude)
+        {
+            CaptureDrawing.DrawInsideBorder(g, paintedFace, radius, Checked || focused ? p.Accent : p.Border,
+                (focused ? 1.75f : 1) * s);
+        }
         else if (focused || SystemInformation.HighContrast)
         {
-            using Pen edge = new(edgeColor, 1.75f * s);
+            using Pen edge = new(Checked || focused ? p.Accent : p.Border, 1.75f * s);
             g.DrawPath(edge, card);
         }
-        if (p.IsClaude && TextRenderer.MeasureText(Text, Font).Width + 92 * s > face.Width)
+
+        const TextFormatFlags textFlags = TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine;
+        if (p.IsClaude && TextRenderer.MeasureText(Text, Font).Width + 90 * s > face.Width)
         {
-            TextRenderer.DrawText(g, Text, Font, Rectangle.Round(face), p.Text,
-                TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter | TextFormatFlags.EndEllipsis | UiLanguage.TextDirection);
+            Rectangle caption = Rectangle.Round(face);
+            caption.Inflate(-(int)MathF.Round(8 * s), 0);
+            TextRenderer.DrawText(g, Text, Font, caption, p.Text, textFlags | TextFormatFlags.HorizontalCenter | UiLanguage.TextDirection);
             return;
         }
+
         RectangleF mini = new(face.Left + ButtonSpacing.Horizontal * s, (Height - 40 * s) / 2, 54 * s, 40 * s);
         CapturePalette sample = CapturePalette.For(Mode == AppearanceMode.Dark ? AppearanceMode.Dark : AppearanceMode.Light, p.Style);
         using SolidBrush window = new(sample.Canvas);
@@ -715,7 +750,8 @@ internal sealed class ThemeOption : RadioButton
         g.DrawLine(line, mini.X + 25 * s, mini.Y + 26 * s, mini.Right - 12 * s, mini.Y + 26 * s);
         int textLeft = (int)(mini.Right + 12 * s);
         TextRenderer.DrawText(g, Text, Font, new Rectangle(textLeft, 0, Math.Max(1, (int)(face.Right - ButtonSpacing.Horizontal * s) - textLeft), Height), p.Text,
-            TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis | UiLanguage.TextDirection);
+            (p.IsClaude ? textFlags : TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis) |
+            TextFormatFlags.Left | UiLanguage.TextDirection);
     }
 }
 
@@ -800,17 +836,23 @@ internal sealed class ShortcutRecorder : Button
         CapturePalette p = Palette;
         float s = DeviceDpi / 96f;
         g.SmoothingMode = SmoothingMode.AntiAlias;
-        g.Clear(p.Surface);
+        g.Clear(p.IsClaude ? Parent?.BackColor ?? p.Surface : p.Surface);
         RectangleF face = ButtonElevation.CompactFaceBounds(ClientSize, s);
         elevation.PaintShadow(g, ClientSize, s, p.Background.GetBrightness() < .5f, Enabled && !pressed && !p.IsClaude ? hover.Value : 0, compact: true, unified: true);
-        using GraphicsPath field = CaptureDrawing.Rounded(face, ButtonElevation.CompactRadius(face, s));
+        RectangleF paintedFace = face;
+        float radius = ButtonElevation.CompactRadius(face, s);
+        if (p.IsClaude) CaptureDrawing.InsetAntialiasedFace(ref paintedFace, ref radius);
+        using GraphicsPath field = CaptureDrawing.Rounded(paintedFace, radius);
         using SolidBrush background = new(recording || pressed ? p.Tint : CaptureDrawing.Blend(p.Canvas, ButtonElevation.Surface(p), hover.Value));
         g.FillPath(background, field);
-        if (recording || Focused && ShowFocusCues || SystemInformation.HighContrast)
+        bool active = recording || Focused && ShowFocusCues;
+        if (p.IsClaude)
+            CaptureDrawing.DrawInsideBorder(g, paintedFace, radius,
+                active ? p.Accent : p.FieldBorder, (active ? 1.5f : 1) * s);
+        else if (active || SystemInformation.HighContrast)
         {
             using Pen edge = new(recording || Focused ? p.Accent : p.Border, 1.5f * s);
-            if (p.IsClaude) CaptureDrawing.DrawInsideBorder(g, face, ButtonElevation.CompactRadius(face, s), edge.Color, edge.Width);
-            else g.DrawPath(edge, field);
+            g.DrawPath(edge, field);
         }
         Rectangle textBounds = Rectangle.Round(face);
         textBounds.Inflate(-(int)Math.Round(ButtonSpacing.Horizontal * s), 0);

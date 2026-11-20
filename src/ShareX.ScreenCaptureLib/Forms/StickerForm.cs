@@ -42,6 +42,9 @@ namespace ShareX.ScreenCaptureLib
 
         private string[] imageFiles;
 
+        internal void UseSelectionColors(Color selection, Color hover) =>
+            ilvStickers.SetRenderer(new StickerImageListViewRenderer { SelectionColor = selection, HoverColor = hover });
+
         public StickerForm(List<StickerPackInfo> stickerPacks, int selectedStickerPack, int stickerSize = 64)
         {
             StickerPacks = stickerPacks;

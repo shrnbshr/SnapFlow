@@ -43,7 +43,7 @@
     <value>No screenshot yet</value>
   </data>
   <data xml:space="preserve" name="ChooseCapture">
-    <value>Choose a capture mode on the left</value>
+    <value>Choose a capture mode above</value>
   </data>
   <data xml:space="preserve" name="CopyImage">
     <value>Copy image</value>
@@ -296,4 +296,7 @@ Esc to cancel</value>
   <data xml:space="preserve" name="SoftwareStyleDefault"><value>Default style</value></data>
   <data xml:space="preserve" name="SoftwareStyleClaude"><value>Claude style</value></data>
   <data xml:space="preserve" name="SoftwareStyleSolid"><value>Claude style uses a solid background.</value></data>
+  <data name="EditorCloseHeading" xml:space="preserve"><value>Save changes?</value></data>
+  <data name="EditorCloseDetail" xml:space="preserve"><value>Unsaved changes to this screenshot will be lost when you close the editor.</value></data>
+  <data name="EditorCloseDiscard" xml:space="preserve"><value>Don’t save</value></data>
 </root>

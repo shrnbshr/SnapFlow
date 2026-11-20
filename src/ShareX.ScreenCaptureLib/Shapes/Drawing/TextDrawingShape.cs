@@ -136,20 +136,20 @@ namespace ShareX.ScreenCaptureLib
 
         private bool ShowTextInputBox()
         {
-            bool result;
-
             Manager.Form.Pause();
-
-            using (TextDrawingInputBox inputBox = new TextDrawingInputBox(Text, TextOptions, SupportGradient, Manager.Options.ColorPickerOptions))
+            try
             {
-                result = inputBox.ShowDialogTopMost(Manager.Form) == DialogResult.OK;
+                using TextDrawingInputBox inputBox = new TextDrawingInputBox(Text, TextOptions, SupportGradient, Manager.Options.ColorPickerOptions);
+                Manager.Form.OnEditorTextDialogCreated(inputBox);
+                bool result = inputBox.ShowDialogTopMost(Manager.Form) == DialogResult.OK;
                 Text = inputBox.InputText;
                 OnConfigSave();
+                return result;
             }
-
-            Manager.Form.Resume();
-
-            return result;
+            finally
+            {
+                Manager.Form.Resume();
+            }
         }
 
         public void AutoSize(bool center)

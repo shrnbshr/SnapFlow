@@ -27,8 +27,6 @@ internal static class EditorOptionFields
         private readonly Label label;
         private readonly Label? suffix;
         private readonly Control field;
-        private Rectangle numberClip;
-        private bool clipping;
         private int scaleDpi = 96;
         private int S(int value) => (int)Math.Round(value * scaleDpi / 96f);
 
@@ -70,32 +68,6 @@ internal static class EditorOptionFields
                 field = new SettingsNumberField(number) { Name = "editorNumberField" };
                 number.TextAlign = HorizontalAlignment.Center;
                 number.Visible = true;
-                // Standard ShareX NumericUpDown instances retain all of their original callbacks.
-                // Clip their native arrow window while the field supplies the rounded stepper.
-                void ClipNumber()
-                {
-                    if (clipping || number.IsDisposed || !number.IsHandleCreated) return;
-                    TextBox? edit = number.Controls.OfType<TextBox>().FirstOrDefault();
-                    if (edit == null) return;
-                    Rectangle next = Rectangle.Intersect(edit.Bounds, number.ClientRectangle);
-                    if (next.IsEmpty || next == numberClip) return;
-                    clipping = true;
-                    try
-                    {
-                        numberClip = next;
-                        Region? previous = number.Region;
-                        number.Region = new Region(next);
-                        previous?.Dispose();
-                    }
-                    finally { clipping = false; }
-                }
-                number.HandleCreated += (_, _) => { numberClip = Rectangle.Empty; ClipNumber(); };
-                number.Layout += (_, _) => ClipNumber();
-                foreach (TextBox edit in number.Controls.OfType<TextBox>())
-                {
-                    edit.SizeChanged += (_, _) => ClipNumber();
-                    edit.LocationChanged += (_, _) => ClipNumber();
-                }
             }
             else field = new EditorOptionChoice((ComboBox)original, transparency) { AccessibleName = label.Text };
             field.AccessibleName = label.Text;
@@ -199,11 +171,13 @@ internal sealed class EditorOptionChoice : Button
         using GraphicsPath path = CaptureDrawing.Rounded(face, 10 * s);
         using SolidBrush fill = new(hovering ? palette.Hover : palette.Canvas);
         g.FillPath(fill, path);
-        if (Focused && ShowFocusCues || menu?.Visible == true || SystemInformation.HighContrast)
+        bool active = Focused && ShowFocusCues || menu?.Visible == true;
+        if (palette.IsClaude)
+            CaptureDrawing.DrawInsideBorder(g, face, 10 * s, active ? palette.Accent : palette.FieldBorder, (active ? 1.5f : 1) * s);
+        else if (active || SystemInformation.HighContrast)
         {
             using Pen border = new(palette.Accent, 1.5f * s);
-            if (palette.IsClaude) CaptureDrawing.DrawInsideBorder(g, face, 10 * s, border.Color, border.Width);
-            else g.DrawPath(border, path);
+            g.DrawPath(border, path);
         }
         TextRenderer.DrawText(g, Text, Font, new Rectangle((int)(12 * s), 0, Math.Max(1, Width - (int)(42 * s)), Height),
             Enabled ? palette.Text : palette.Secondary, TextFormatFlags.Left | TextFormatFlags.VerticalCenter |

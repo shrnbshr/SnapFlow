@@ -81,10 +81,15 @@ internal sealed class SettingsFolderField : Control
         RectangleF bounds = new(scale, scale, Width - 2 * scale, Height - 2 * scale);
         using GraphicsPath shape = CaptureDrawing.Rounded(bounds, 10 * scale);
         using SolidBrush fill = new(palette.Canvas);
-        using Pen edge = new(CaptureDrawing.Blend(palette.Border, palette.Accent, focus.Value), (ContainsFocus ? 1.5f : 1) * scale);
+        bool focused = ContainsFocus;
         graphics.FillPath(fill, shape);
-        if (palette.IsClaude && ContainsFocus) CaptureDrawing.DrawInsideBorder(graphics, bounds, 10 * scale, edge.Color, edge.Width);
-        else if (ContainsFocus || SystemInformation.HighContrast) graphics.DrawPath(edge, shape);
+        if (palette.IsClaude)
+            CaptureDrawing.DrawInsideBorder(graphics, bounds, 10 * scale, focused ? palette.Accent : palette.FieldBorder, (focused ? 1.5f : 1) * scale);
+        else if (focused || SystemInformation.HighContrast)
+        {
+            using Pen edge = new(CaptureDrawing.Blend(palette.Border, palette.Accent, focus.Value), (focused ? 1.5f : 1) * scale);
+            graphics.DrawPath(edge, shape);
+        }
         // A small folder outline makes the location field recognizable beside numeric and language inputs.
         float x = ButtonSpacing.Horizontal * scale, y = (Height - 14 * scale) / 2;
         using GraphicsPath icon = new();

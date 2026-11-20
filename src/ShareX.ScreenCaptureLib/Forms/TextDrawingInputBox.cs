@@ -1,4 +1,4 @@
-﻿#region License Information (GPL v3)
+#region License Information (GPL v3)
 
 /*
     ShareX - A program that allows you to take screenshots and share any file type
@@ -40,6 +40,27 @@ namespace ShareX.ScreenCaptureLib
         public ColorPickerOptions ColorPickerOptions { get; private set; }
 
         private int processKeyCount;
+        private Func<Color, Color> previewBackground;
+        private bool? hostDarkTheme;
+        private bool UseLightGlyphs => hostDarkTheme ?? ShareXResources.IsDarkTheme;
+
+        internal TextBox Input => txtInput;
+        internal FlowLayoutPanel FormattingBar => flpProperties;
+        internal Label Tip => lblTip;
+        internal Button EnterKeyButton => btnSwapEnterKey;
+        internal Button ConfirmButton => btnOK;
+        internal Button CancelAction => btnCancel;
+        internal ToolStripDropDown[] FormattingMenus => new[] { cmsAlignmentHorizontal, cmsAlignmentVertical, cmsGradient };
+
+        internal void ApplyHostAppearance(bool dark, Func<Color, Color> previewBackground)
+        {
+            hostDarkTheme = dark;
+            this.previewBackground = previewBackground;
+            UpdateButtonImages();
+            UpdatePreviewColors();
+        }
+
+        internal string ButtonHint(ButtonBase button) => ttTextInput.GetToolTip(button);
 
         public TextDrawingInputBox(string text, TextDrawingOptions options, bool supportGradient, ColorPickerOptions colorPickerOptions)
         {
@@ -330,8 +351,7 @@ namespace ShareX.ScreenCaptureLib
 
             txtInput.Font = font;
 
-            txtInput.ForeColor = Options.Color;
-            txtInput.BackColor = ColorHelpers.VisibleColor(Options.Color, Color.White, Color.FromArgb(50, 50, 50));
+            UpdatePreviewColors();
 
             HorizontalAlignment horizontalAlignment;
 
@@ -352,19 +372,26 @@ namespace ShareX.ScreenCaptureLib
             txtInput.TextAlign = horizontalAlignment;
         }
 
+        private void UpdatePreviewColors()
+        {
+            txtInput.ForeColor = Options.Color;
+            txtInput.BackColor = previewBackground?.Invoke(Options.Color) ??
+                ColorHelpers.VisibleColor(Options.Color, Color.White, Color.FromArgb(50, 50, 50));
+        }
+
         private void UpdateButtonImages()
         {
-            cbBold.Image = ShareXResources.IsDarkTheme ? Resources.edit_bold_white : Resources.edit_bold;
-            cbItalic.Image = ShareXResources.IsDarkTheme ? Resources.edit_italic_white : Resources.edit_italic;
-            cbUnderline.Image = ShareXResources.IsDarkTheme ? Resources.edit_underline_white : Resources.edit_underline;
+            cbBold.Image = UseLightGlyphs ? Resources.edit_bold_white : Resources.edit_bold;
+            cbItalic.Image = UseLightGlyphs ? Resources.edit_italic_white : Resources.edit_italic;
+            cbUnderline.Image = UseLightGlyphs ? Resources.edit_underline_white : Resources.edit_underline;
             UpdateHorizontalAlignmentImage();
             UpdateVerticalAlignmentImage();
-            tsmiAlignmentLeft.Image = ShareXResources.IsDarkTheme ? Resources.edit_alignment_white : Resources.edit_alignment;
-            tsmiAlignmentCenter.Image = ShareXResources.IsDarkTheme ? Resources.edit_alignment_center_white : Resources.edit_alignment_center;
-            tsmiAlignmentRight.Image = ShareXResources.IsDarkTheme ? Resources.edit_alignment_right_white : Resources.edit_alignment_right;
-            tsmiAlignmentTop.Image = ShareXResources.IsDarkTheme ? Resources.edit_vertical_alignment_top_white : Resources.edit_vertical_alignment_top;
-            tsmiAlignmentMiddle.Image = ShareXResources.IsDarkTheme ? Resources.edit_vertical_alignment_middle_white : Resources.edit_vertical_alignment_middle;
-            tsmiAlignmentBottom.Image = ShareXResources.IsDarkTheme ? Resources.edit_vertical_alignment_white : Resources.edit_vertical_alignment;
+            tsmiAlignmentLeft.Image = UseLightGlyphs ? Resources.edit_alignment_white : Resources.edit_alignment;
+            tsmiAlignmentCenter.Image = UseLightGlyphs ? Resources.edit_alignment_center_white : Resources.edit_alignment_center;
+            tsmiAlignmentRight.Image = UseLightGlyphs ? Resources.edit_alignment_right_white : Resources.edit_alignment_right;
+            tsmiAlignmentTop.Image = UseLightGlyphs ? Resources.edit_vertical_alignment_top_white : Resources.edit_vertical_alignment_top;
+            tsmiAlignmentMiddle.Image = UseLightGlyphs ? Resources.edit_vertical_alignment_middle_white : Resources.edit_vertical_alignment_middle;
+            tsmiAlignmentBottom.Image = UseLightGlyphs ? Resources.edit_vertical_alignment_white : Resources.edit_vertical_alignment;
         }
 
         private void UpdateHorizontalAlignmentImage()
@@ -373,13 +400,13 @@ namespace ShareX.ScreenCaptureLib
             {
                 default:
                 case StringAlignment.Near:
-                    btnAlignmentHorizontal.Image = ShareXResources.IsDarkTheme ? Resources.edit_alignment_white : Resources.edit_alignment;
+                    btnAlignmentHorizontal.Image = UseLightGlyphs ? Resources.edit_alignment_white : Resources.edit_alignment;
                     break;
                 case StringAlignment.Center:
-                    btnAlignmentHorizontal.Image = ShareXResources.IsDarkTheme ? Resources.edit_alignment_center_white : Resources.edit_alignment_center;
+                    btnAlignmentHorizontal.Image = UseLightGlyphs ? Resources.edit_alignment_center_white : Resources.edit_alignment_center;
                     break;
                 case StringAlignment.Far:
-                    btnAlignmentHorizontal.Image = ShareXResources.IsDarkTheme ? Resources.edit_alignment_right_white : Resources.edit_alignment_right;
+                    btnAlignmentHorizontal.Image = UseLightGlyphs ? Resources.edit_alignment_right_white : Resources.edit_alignment_right;
                     break;
             }
         }
@@ -390,15 +417,22 @@ namespace ShareX.ScreenCaptureLib
             {
                 default:
                 case StringAlignment.Near:
-                    btnAlignmentVertical.Image = ShareXResources.IsDarkTheme ? Resources.edit_vertical_alignment_top_white : Resources.edit_vertical_alignment_top;
+                    btnAlignmentVertical.Image = UseLightGlyphs ? Resources.edit_vertical_alignment_top_white : Resources.edit_vertical_alignment_top;
                     break;
                 case StringAlignment.Center:
-                    btnAlignmentVertical.Image = ShareXResources.IsDarkTheme ? Resources.edit_vertical_alignment_middle_white : Resources.edit_vertical_alignment_middle;
+                    btnAlignmentVertical.Image = UseLightGlyphs ? Resources.edit_vertical_alignment_middle_white : Resources.edit_vertical_alignment_middle;
                     break;
                 case StringAlignment.Far:
-                    btnAlignmentVertical.Image = ShareXResources.IsDarkTheme ? Resources.edit_vertical_alignment_white : Resources.edit_vertical_alignment;
+                    btnAlignmentVertical.Image = UseLightGlyphs ? Resources.edit_vertical_alignment_white : Resources.edit_vertical_alignment;
                     break;
             }
         }
+    }
+
+    // The host can draw the closed field while the native list keeps font search and keyboard navigation.
+    internal sealed class TextFontChoice : ComboBox
+    {
+        internal void EnableHostPainting() =>
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
     }
 }

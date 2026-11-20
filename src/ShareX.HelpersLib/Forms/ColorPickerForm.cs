@@ -43,6 +43,8 @@ namespace ShareX.HelpersLib
         private bool controlChangingColor;
         private ControlHider clipboardStatusHider;
 
+        internal string ButtonHint(ButtonBase button) => ttMain.GetToolTip(button);
+
         public ColorPickerForm(Color currentColor, bool isScreenColorPickerMode = false, bool checkClipboard = true, ColorPickerOptions options = null)
         {
             InitializeComponent();
@@ -128,7 +130,7 @@ namespace ShareX.HelpersLib
 
         private void PrepareColorPalette()
         {
-            flpColorPalette.Controls.Clear();
+            while (flpColorPalette.Controls.Count > 0) flpColorPalette.Controls[0].Dispose();
 
             Color[] colors;
 
@@ -158,23 +160,17 @@ namespace ShareX.HelpersLib
                     ManualButtonClick = true
                 };
 
-                colorButton.MouseClick += (sender, e) =>
+                colorButton.Click += (sender, e) =>
                 {
-                    if (e.Button == MouseButtons.Left)
-                    {
-                        SetCurrentColor(colorButton.Color, true);
+                    SetCurrentColor(colorButton.Color, true);
 
-                        if (!IsScreenColorPickerMode)
+                    if (!IsScreenColorPickerMode)
+                    {
+                        if (!previousColor.IsEmpty && previousColor == colorButton.Color)
                         {
-                            if (!previousColor.IsEmpty && previousColor == colorButton.Color)
-                            {
-                                CloseOK();
-                            }
-                            else
-                            {
-                                previousColor = colorButton.Color;
-                            }
+                            CloseOK();
                         }
+                        else previousColor = colorButton.Color;
                     }
                 };
 

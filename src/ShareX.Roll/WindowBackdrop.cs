@@ -135,7 +135,7 @@ internal sealed class WindowBackdrop : IDisposable
         // The rounded preview frame's outside corners expose the material; its children stay opaque.
         if (control is PreviewSurface) return true;
         for (Control? ancestor = control; ancestor != null; ancestor = ancestor.Parent)
-            if (ancestor is PreviewSurface or PictureBox) return false;
+            if (ancestor is PreviewSurface or PictureBox or ColorButton) return false;
         return control is not (PageTransition or AboutDocumentButton);
     }
 
