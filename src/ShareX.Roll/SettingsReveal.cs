@@ -168,9 +168,9 @@ internal sealed class SettingsReveal : Panel
     internal void UpdateBorderClip()
     {
         Region? previous = Region;
-        if (Width > 0 && Height > 0 && Parent is SettingsGroup { UsesPageDivider: true } group)
+        if (Width > 0 && Height > 0 && Parent is SettingsGroup { PreserveBottomBorder: true } group)
         {
-            // Leave the parent's divider exposed while the editor expands or collapses.
+            // Leave the group's bottom edge exposed while the editor expands or collapses.
             int border = CaptureDrawing.BorderPixelWidth(group.DeviceDpi / 96f);
             Region = new Region(new Rectangle(0, 0, Width, Math.Max(0, Height - border)));
         }

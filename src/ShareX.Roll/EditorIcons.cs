@@ -17,8 +17,10 @@ internal static class EditorIcons
         "editorUndo" or "editorRedo" or "editorPaste" or "editorDuplicate" or "editorDelete" or "editorDeleteAll" or
         "editorMoveTop" or "editorMoveUp" or "editorMoveDown" or "editorMoveBottom" or "tsbEditStickers";
 
-    internal static void Draw(Graphics g, Rectangle bounds, ShapeType? type, string name, Color ink)
+    internal static void Draw(Graphics g, Rectangle bounds, ShapeType? type, string name, Color ink,
+        SoftwareStyle style = SoftwareStyle.Default)
     {
+        if (ThemeIcons.TryDraw(g, bounds, style, ThemeIcons.EditorAction(type, name), ink)) return;
         GraphicsState state = g.Save();
         g.TranslateTransform(bounds.X, bounds.Y);
         g.ScaleTransform(bounds.Width / 20f, bounds.Height / 20f);

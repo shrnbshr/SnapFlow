@@ -334,7 +334,7 @@ internal sealed partial class PreviewCanvas
             using SolidBrush track = new(Palette.Canvas);
             g.FillRectangle(track, ScrollTrack);
             using SolidBrush ink = new(Palette.Secondary);
-            using GraphicsPath path = CaptureDrawing.Rounded(new RectangleF(thumb.X + D(7), thumb.Y, D(6), thumb.Height), D(3));
+            using GraphicsPath path = CaptureDrawing.Rounded(new RectangleF(thumb.X + D(7), thumb.Y, D(6), thumb.Height), Palette.CornerRadius(D(3)));
             g.FillPath(ink, path);
         }
         if (Focused && ShowFocusCues)
@@ -560,11 +560,18 @@ internal sealed class PreviewZoomBar : Panel
 
     internal void ApplyPalette(CapturePalette value)
     {
+        if (FaceRadius != Radius(value))
+        {
+            shadow?.Dispose();
+            shadow = null;
+        }
         palette = value;
-        BackColor = palette.Surface;
+        BackColor = palette.UsesFilledActions ? palette.RaisedSurface : palette.Surface;
         CaptureTypography.ApplyDescription(percent, width.Font, palette);
         foreach (Button button in Controls) palette.StyleButton(button);
-        CapturePalette fitPalette = reading && !palette.IsClaude ? palette with { Accent = palette.Tint, AccentText = palette.Text } : palette;
+        CapturePalette fitPalette = reading && !palette.IsClaude
+            ? palette with { Accent = palette.Tint, AccentText = palette.IsMaterial ? palette.TintText : palette.Text }
+            : palette;
         fitPalette.StyleButton(width, reading);
         // The shared button styler uses visible glyphs as names; restore this toolbar's
         // localized meanings without repeating tooltip registration or layout.
@@ -614,23 +621,27 @@ internal sealed class PreviewZoomBar : Panel
         // All button windows sample the same blurred image, keeping the material continuous.
         bool transparent = viewport.ZoomTransparencyEnabled && !SystemInformation.HighContrast;
         if (origin == Point.Empty) viewport.PaintZoomBackdrop(graphics, Bounds);
-        else graphics.Clear(palette.Surface);
+        else graphics.Clear(BackColor);
         GraphicsState state = graphics.Save();
         graphics.TranslateTransform(-origin.X, -origin.Y);
         graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        using GraphicsPath path = CaptureDrawing.Rounded(FaceBounds, 14 * DeviceDpi / 96f);
+        using GraphicsPath path = CaptureDrawing.Rounded(FaceBounds, FaceRadius);
         if (origin == Point.Empty && !SystemInformation.HighContrast)
             PaintShadow(graphics);
         if (transparent)
-            backdrop.Paint(graphics, viewport, Bounds, path,
-                Color.FromArgb(palette.Surface.GetBrightness() < .5f ? 222 : 218, palette.Surface));
+            backdrop.Paint(graphics, viewport, Bounds, path, BackdropSnapshot.PreviewTint(palette));
         else
         {
-            using SolidBrush fill = new(palette.Surface);
+            using SolidBrush fill = new(BackColor);
             graphics.FillPath(fill, path);
         }
         graphics.Restore(state);
     }
+
+    private float Radius(CapturePalette value) =>
+        value.CornerRadius(value.IsWinUI ? CapturePalette.WinUIOverlayRadius : value.IsMaterial ? MaterialPalette.PanelRadius : 14) * DeviceDpi / 96f;
+
+    private float FaceRadius => Radius(palette);
 
     private void PaintShadow(Graphics graphics)
     {
@@ -638,7 +649,7 @@ internal sealed class PreviewZoomBar : Panel
         if (shadow == null || shadow.Size != Size || shadowScale != scale)
         {
             shadow?.Dispose();
-            shadow = ButtonElevation.CreateShadow(Size, scale, 2.6f, 1.4f, FaceBounds, 14 * scale, 2.6f, false);
+            shadow = ButtonElevation.CreateShadow(Size, scale, 2.6f, 1.4f, FaceBounds, FaceRadius, 2.6f, false);
             shadowScale = scale;
         }
         using ImageAttributes opacity = new();
@@ -660,7 +671,7 @@ internal sealed class PreviewZoomBar : Panel
         {
             long position = message.LParam.ToInt64();
             Point local = PointToClient(new Point((short)position, (short)(position >> 16)));
-            using GraphicsPath path = CaptureDrawing.Rounded(FaceBounds, 14 * DeviceDpi / 96f);
+            using GraphicsPath path = CaptureDrawing.Rounded(FaceBounds, FaceRadius);
             if (!path.IsVisible(local)) { message.Result = new IntPtr(-1); return; }
         }
         base.WndProc(ref message);

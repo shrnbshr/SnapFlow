@@ -334,7 +334,7 @@ internal sealed class SettingsScrollHost : Panel
                     (Palette.Background.G + 4 * Palette.Secondary.G) / 5,
                     (Palette.Background.B + 4 * Palette.Secondary.B) / 5);
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            using GraphicsPath path = CaptureDrawing.Rounded(shape, width / 2f);
+            using GraphicsPath path = CaptureDrawing.Rounded(shape, Palette.CornerRadius(width / 2f));
             using SolidBrush brush = new(ink);
             e.Graphics.FillPath(brush, path);
             if (Focused && ShowFocusCues)

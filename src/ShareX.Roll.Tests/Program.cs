@@ -30,6 +30,23 @@ internal static class Program
         Application.EnableVisualStyles();
         Application.SetUnhandledExceptionMode(UnhandledExceptionMode.ThrowException);
         Application.SetCompatibleTextRenderingDefault(false);
+        if (args.Contains("--editor-winui-hover"))
+        {
+            try { EditorChromeRegression.VerifyWinUIHover(); return 0; }
+            catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }
+        }
+        if (args.Contains("--settings-defaults"))
+        {
+            try { SettingsRegression.VerifyUpstreamLink(); SettingsRegression.VerifyDefaults(); return 0; }
+            catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }
+        }
+        if (args.Contains("--theme-icons"))
+        {
+            try { ThemeIconRegression.Run(); return 0; }
+            catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }
+        }
+        SoftwareStyle testStyle = args.Contains("--metro") ? SoftwareStyle.MetroClassic : args.Contains("--winui") ? SoftwareStyle.WinUI :
+            args.Contains("--material") ? SoftwareStyle.MaterialYou : SoftwareStyle.Default;
         if (args.Contains("--button-refinement"))
         {
             try { ButtonRefinementRegression.Run(); return 0; }
@@ -54,7 +71,7 @@ internal static class Program
             SettingsOpenLatencyRegression.StartupMilliseconds = startup.Elapsed.TotalMilliseconds;
             try
             {
-                if (args.Contains("--capture-motion-policy")) await CaptureMotionPolicyRegression.RunAsync(main);
+                if (args.Contains("--capture-motion-policy")) await CaptureMotionPolicyRegression.RunAsync(main, testStyle);
                 else if (args.Contains("--preview-keyboard-motion")) await PreviewKeyboardMotionRegression.RunAsync(main);
                 else if (args.Contains("--preview-toolbar-performance")) await PreviewToolbarPerformanceRegression.RunAsync(main);
                 else if (args.Contains("--preview-command-work")) await PreviewCommandWorkRegression.RunAsync(main);
@@ -65,8 +82,9 @@ internal static class Program
                 else if (args.Contains("--startup-painting")) await StartupPaintingRegression.RunAsync(main, args.Contains("--baseline"));
                 else if (args.Contains("--button-hover")) await ButtonHoverRegression.RunAsync(main, args.Contains("--baseline"), args.Contains("--all-button-types"));
                 else if (args.Contains("--transparency-startup")) TransparencySettingsRegression.VerifyStartup(main, !args.Contains("--expected-off"));
-                else if (args.Contains("--software-style")) await SoftwareStyleRegression.RunAsync(main);
-                else if (args.Contains("--software-style-dpi")) await SoftwareStyleRegression.RunIntermediateDpiAsync(main);
+                else if (args.Contains("--software-style")) await SoftwareStyleRegression.RunAsync(main, testStyle);
+                else if (args.Contains("--software-style-dpi")) await SoftwareStyleRegression.RunIntermediateDpiAsync(main,
+                    testStyle == SoftwareStyle.Default ? SoftwareStyle.Claude : testStyle);
                 else if (args.Contains("--theme-transition")) await ThemeTransitionRegression.RunAsync(main);
                 else if (args.Contains("--transparency-flicker")) await TransparencyFlickerRegression.RunAsync(main, args.Contains("--baseline"));
                 else if (args.Contains("--transparency-settings")) await TransparencySettingsRegression.RunAsync(main);
@@ -98,11 +116,12 @@ internal static class Program
                 else if (args.Contains("--crop-viewport")) await BoundaryCropRegression.RunViewportAsync(main);
                 else if (args.Contains("--preview-actions")) await PreviewActionLayoutRegression.RunAsync(main);
                 else if (args.Contains("--editor-text-dialog")) await EditorTextDialogRegression.RunAsync(main);
-                else if (args.Contains("--owned-dialogs")) await OwnedDialogRegression.RunAsync(main);
+                else if (args.Contains("--owned-dialogs")) await OwnedDialogRegression.RunAsync(main, testStyle);
                 else if (args.Contains("--editor-close-dialog")) await OwnedDialogRegression.VerifyCloseAsync(main);
-                else if (args.Contains("--editor-options")) await EditorOptionsRegression.RunAsync(main);
+                else if (args.Contains("--editor-options")) await EditorOptionsRegression.RunAsync(main, testStyle);
                 else if (args.Contains("--editor-effects")) await EditorEffectsRegression.RunAsync(main);
                 else if (args.Contains("--editor-backdrop")) await EditorBackdropRegression.RunAsync(main);
+                else if (args.Contains("--editor-materials")) await EditorBackdropRegression.RunMaterialsAsync(main);
                 else if (args.Contains("--editor-chrome")) await EditorChromeRegression.RunAsync(main);
                 else if (args.Contains("--edge-crop")) await BoundaryCropRegression.RunAsync(main, args.Contains("--simulate-input"));
                 else if (args.Contains("--editor")) await EditorRegression.RunAsync(main);

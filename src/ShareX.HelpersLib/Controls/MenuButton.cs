@@ -23,6 +23,7 @@
 
 #endregion License Information (GPL v3)
 
+using System;
 using System.ComponentModel;
 using System.Drawing;
 using System.Windows.Forms;
@@ -36,6 +37,8 @@ namespace ShareX.HelpersLib
 
         [DefaultValue(false)]
         public bool ShowMenuUnderCursor { get; set; }
+
+        internal Func<PaintEventArgs, Rectangle, bool> PaintMenuArrow { get; set; }
 
         public void OpenMenu()
         {
@@ -78,6 +81,7 @@ namespace ShareX.HelpersLib
             {
                 int arrowX = ClientRectangle.Width - Padding.Right - 14;
                 int arrowY = (ClientRectangle.Height / 2) - 1;
+                if (PaintMenuArrow?.Invoke(pevent, new Rectangle(arrowX, arrowY, 7, 4)) == true) return;
 
                 Color color = Enabled ? ForeColor : SystemColors.ControlDark;
                 using (Brush brush = new SolidBrush(color))

@@ -33,18 +33,25 @@ internal static class EditorOptionsRegression
         return Rectangle.FromLTRB(start.X, start.Y, end.X, end.Y);
     }
 
-    internal static async Task RunAsync(MainForm main)
+    internal static async Task RunAsync(MainForm main, SoftwareStyle style = SoftwareStyle.Default)
     {
-        string output = Path.GetFullPath("artifacts/editor-options-polish/" + main.DeviceDpi);
+        string output = Path.GetFullPath(style switch
+        {
+            SoftwareStyle.MetroClassic => $"artifacts/metro-style/editor-options-{main.DeviceDpi}",
+            SoftwareStyle.WinUI => $"artifacts/winui-style/editor-options-{main.DeviceDpi}",
+            SoftwareStyle.MaterialYou => $"artifacts/material-style/editor-options-{main.DeviceDpi}",
+            _ => "artifacts/editor-options-polish/" + main.DeviceDpi
+        });
         Directory.CreateDirectory(output);
         bool motion = UiMotion.UserEnabled;
         try
         {
             UiMotion.UserEnabled = false;
-            foreach (CapturePalette palette in new[] { CapturePalette.Light, CapturePalette.Dark })
-            foreach (bool transparent in new[] { false, true })
+            foreach (AppearanceMode mode in new[] { AppearanceMode.Light, AppearanceMode.Dark })
+            foreach (bool transparent in style is SoftwareStyle.MaterialYou or SoftwareStyle.MetroClassic ? new[] { false } : new[] { false, true })
             {
-                string theme = palette == CapturePalette.Light ? "light" : "dark";
+                CapturePalette palette = CapturePalette.For(mode, style);
+                string theme = mode == AppearanceMode.Light ? "light" : "dark";
                 palette.ApplyLibraryTheme();
                 using Bitmap image = new(600, 360);
                 using (Graphics g = Graphics.FromImage(image)) { g.Clear(Color.White); g.FillRectangle(Brushes.CornflowerBlue, 80, 60, 440, 200); }

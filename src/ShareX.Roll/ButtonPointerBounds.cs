@@ -28,8 +28,8 @@ internal sealed class ButtonPointerBounds
     internal static void ApplyInset(Control control, bool enabled, float radius) =>
         Apply(control, enabled ? BoundsKind.Inset : BoundsKind.None, radius);
 
-    internal static void ApplyToggle(MotionToggle toggle, bool enabled) =>
-        Apply(toggle, enabled ? BoundsKind.Toggle : BoundsKind.None, 12);
+    internal static void ApplyToggle(MotionToggle toggle, CapturePalette palette) =>
+        Apply(toggle, palette.HasShapedControls ? BoundsKind.Toggle : BoundsKind.None, palette.CornerRadius(12));
 
     private static void Apply(Control control, BoundsKind kind, float? radius)
     {

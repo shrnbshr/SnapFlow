@@ -25,12 +25,13 @@ internal sealed class ScrollingOptionsDialog : Form
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.Controls.Add(new Label { Text = L("Scroll"), AutoSize = true, Font = new Font(Font.FontFamily, 18, FontStyle.Bold), Margin = new Padding(0, 0, 0, SettingsLayout.SectionGap) }, 0, 0);
+        root.Controls.Add(new Label { Text = L("Scroll"), AutoSize = true, Font = CaptureTypography.CreateHeading(Font, 18, palette), Margin = new Padding(0, 0, 0, SettingsLayout.SectionGap) }, 0, 0);
         ScrollingOptionsEditor editor = new(options);
         SettingsGroup group = new()
         {
             Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, RowCount = 1,
-            Padding = new Padding(SettingsLayout.Inset, SettingsLayout.Vertical, SettingsLayout.Inset, 0), Margin = Padding.Empty
+            Padding = new Padding(SettingsLayout.Inset, SettingsLayout.Vertical, SettingsLayout.Inset,
+                palette.IsWinUI || palette.IsMetro ? SettingsLayout.Vertical : 0), Margin = Padding.Empty
         };
         group.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         group.RowStyles.Add(new RowStyle(SizeType.AutoSize));

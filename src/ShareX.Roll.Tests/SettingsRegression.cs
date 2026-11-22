@@ -19,6 +19,83 @@ internal static class SettingsRegression
     }
     private static T Find<T>(Control parent, string name) where T : Control => (T)parent.Controls.Find(name, true).Single();
 
+    internal static void VerifyDefaults()
+    {
+        Directory.CreateDirectory(Output);
+        string path = Path.Combine(Output, $"defaults-{Guid.NewGuid():N}.json");
+        try
+        {
+            ApplicationPreferences fresh = ApplicationPreferences.Load(path);
+            Check(fresh.Shortcuts.Count == ApplicationPreferences.Actions.Length &&
+                fresh.Shortcuts.Values.All(keys => keys == Keys.None), "fresh installations have no capture shortcuts");
+            fresh.Shortcuts["full"] = Keys.Control | Keys.Alt | Keys.F8;
+            fresh.Shortcuts.Remove("region");
+            fresh.Save(path);
+            ApplicationPreferences saved = ApplicationPreferences.Load(path);
+            Check(saved.Shortcuts["full"] == fresh.Shortcuts["full"] &&
+                saved.Shortcuts["region"] == Keys.None && saved.Shortcuts["scroll"] == Keys.None,
+                "saved shortcuts survive while missing actions stay unassigned");
+
+            using MainForm main = new();
+            FieldInfo(main, "preferences").SetValue(main, new ApplicationPreferences());
+            Call(main, "RegisterCaptureHotkeys");
+            Check(Field<Dictionary<ushort, string>>(main, "hotkeyActions").Count == 0 &&
+                Field<List<HotkeyInfo>>(main, "hotkeys").All(hotkey => hotkey.Status == HotkeyStatus.NotConfigured),
+                "startup leaves global hotkeys unregistered");
+        }
+        finally { File.Delete(path); }
+    }
+
+    internal static void VerifyUpstreamLink()
+    {
+        FieldInfo dpiField = typeof(Control).GetField("_deviceDpi", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        foreach (int dpi in new[] { 96, 120, 144, 168, 192 })
+        foreach (string label in new[] { "上游项目 ↗", "上游項目 ↗", "Upstream project ↗" })
+        {
+            using Font font = new("Microsoft YaHei UI", 13f * dpi / 96f, GraphicsUnit.Pixel);
+            using FlowLayoutPanel links = new() { AutoSize = true, WrapContents = false };
+            using AboutDocumentButton button = new()
+            {
+                Font = font, Text = label, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink
+            };
+            links.Controls.Add(button);
+            _ = button.Handle;
+            dpiField.SetValue(button, dpi);
+            foreach (SoftwareStyle style in Enum.GetValues<SoftwareStyle>().Where(style => style != SoftwareStyle.Default))
+            foreach (AppearanceMode mode in new[] { AppearanceMode.Light, AppearanceMode.Dark })
+            {
+                CapturePalette palette = CapturePalette.For(mode, style);
+                button.BackColor = palette.Background;
+                button.ForeColor = palette.Text;
+                button.AutoSize = true;
+                button.ApplyPalette(palette);
+                Size preferred = button.GetPreferredSize(Size.Empty);
+                if (button.Width < preferred.Width)
+                    throw new InvalidOperationException($"{label}, {style}/{mode}, {dpi} DPI: theme change did not reserve the preferred link width.");
+                button.AutoSize = false;
+                int InkWidth(int extraWidth)
+                {
+                    button.Size = new Size(preferred.Width + extraWidth, preferred.Height);
+                    using Bitmap bitmap = new(button.Width, button.Height);
+                    button.DrawToBitmap(bitmap, button.ClientRectangle);
+                    int first = bitmap.Width, last = -1;
+                    for (int y = 0; y < bitmap.Height; y++)
+                    for (int x = 0; x < bitmap.Width; x++)
+                    {
+                        if (bitmap.GetPixel(x, y).ToArgb() != palette.Text.ToArgb()) continue;
+                        first = Math.Min(first, x);
+                        last = Math.Max(last, x);
+                    }
+                    return Math.Max(0, last - first + 1);
+                }
+                int actual = InkWidth(0), full = InkWidth(dpi);
+                if (actual <= 0 || Math.Abs(actual - full) > 1)
+                    throw new InvalidOperationException($"{label}, {style}/{mode}, {dpi} DPI: caption ink spans {actual} pixels instead of {full}.");
+            }
+        }
+        Check(true, "upstream link renders in full in four styles and both color modes at 96–192 DPI");
+    }
+
     internal static async Task RunAsync(MainForm main)
     {
         Directory.CreateDirectory(Output);
@@ -163,8 +240,9 @@ internal static class SettingsRegression
                 Check(recorder.Shortcut == Keys.None, "clear disables a shortcut");
                 Check(Find<Button>(page, "regionClear").AccessibleName!.Contains(ShareX.Roll.Localization.UiText.L("Region")),
                     "clear icon retains its descriptive accessible name");
+                recorder.SetShortcut(Keys.Control | Keys.Shift | Keys.F9);
                 Find<Button>(page, "resetSettingsButton").PerformClick();
-                Check(recorder.Shortcut == (Keys.Control | Keys.Shift | Keys.A), "restore defaults updates recorder");
+                Check(recorder.Shortcut == Keys.None, "restore defaults clears the shortcut");
                 Find<Button>(page, "cancelSettingsButton").PerformClick();
                 Check(Field<SettingsPage?>(main, "settingsPage") == null && main.Handle == mainHandle,
                     "back returns without replacing the main window");

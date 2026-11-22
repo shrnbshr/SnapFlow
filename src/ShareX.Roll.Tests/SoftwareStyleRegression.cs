@@ -411,10 +411,17 @@ internal static class SoftwareStyleRegression
                     bitmap.GetPixel(right - offset, centerY).ToArgb() == expected;
             }), $"{option.Name} has a {borderWidth}px outline with the expected color on all four sides at {dpi} DPI");
 
-            int swatchX = (int)MathF.Round(face.Left + (ButtonSpacing.Horizontal + 13) * scale);
-            int swatchY = centerY + (int)MathF.Round(4 * scale);
-            Check(bitmap.GetPixel(swatchX, swatchY).ToArgb() == palette.Accent.ToArgb(),
-                $"{option.Name} renders the miniature window accent at {dpi} DPI");
+            CapturePalette illustration = option.Mode == AppearanceMode.Dark ? CapturePalette.ClaudeDark : CapturePalette.ClaudeLight;
+            int iconLeft = (int)MathF.Round(face.Left + ButtonSpacing.Horizontal * scale);
+            int iconTop = centerY - (int)MathF.Round(19 * scale);
+            bool warmInk = Enumerable.Range(iconTop, (int)MathF.Round(38 * scale)).Any(y =>
+                Enumerable.Range(iconLeft, (int)MathF.Round(50 * scale)).Any(x =>
+                {
+                    Color pixel = bitmap.GetPixel(x, y), accent = illustration.IllustrationAccent;
+                    return Math.Abs(pixel.R - accent.R) <= 10 && Math.Abs(pixel.G - accent.G) <= 10 &&
+                        Math.Abs(pixel.B - accent.B) <= 10;
+                }));
+            Check(warmInk, $"{option.Name} renders the terracotta paper illustration at {dpi} DPI");
 
             int cornerX = (int)MathF.Round(face.Right - 14 * scale);
             int cornerY = (int)MathF.Round(face.Top + 11 * scale);
@@ -470,9 +477,15 @@ internal static class SoftwareStyleRegression
             $"{control.Name} track and outline match its enabled and checked state at {control.DeviceDpi} DPI");
     }
 
-    internal static async Task RunIntermediateDpiAsync(MainForm main)
+    internal static async Task RunIntermediateDpiAsync(MainForm main, SoftwareStyle theme)
     {
-        string output = Path.GetFullPath("artifacts/software-style/simulated-dpi");
+        string output = Path.GetFullPath(theme switch
+        {
+            SoftwareStyle.MetroClassic => "artifacts/metro-style/simulated-dpi",
+            SoftwareStyle.WinUI => "artifacts/winui-style/simulated-dpi",
+            SoftwareStyle.MaterialYou => "artifacts/material-style/simulated-dpi",
+            _ => "artifacts/software-style/simulated-dpi"
+        });
         Directory.CreateDirectory(output);
         FieldInfo deviceDpi = typeof(Control).GetField("_deviceDpi", Members)
             ?? throw new InvalidOperationException("The WinForms DPI backing field has changed.");
@@ -490,7 +503,8 @@ internal static class SoftwareStyleRegression
                 };
                 using SettingsPage page = new(new()
                 {
-                    Style = SoftwareStyle.Claude, Appearance = mode, AnimationsEnabled = false, TransparencyEnabled = true
+                    Style = theme, Appearance = mode,
+                    AnimationsEnabled = false, TransparencyEnabled = true
                 }, new(), (_, _) => null) { Dock = DockStyle.Fill, AutoScaleMode = AutoScaleMode.None };
                 host.Controls.Add(page);
                 host.Show(main);
@@ -530,9 +544,10 @@ internal static class SoftwareStyleRegression
                     await Task.Delay(140);
                     Check(page.DeviceDpi == dpi, $"fixture renders at the requested {dpi} DPI (actual {page.DeviceDpi})");
                     Console.WriteLine($"DPI CHECK: simulated {dpi} DPI, {mode}");
-                    VerifyAppearanceStates(page, page.PreviewPalette);
+                    if (theme != SoftwareStyle.Claude) VerifyAdditionalStyleSettings(page);
+                    else VerifyAppearanceStates(page, page.PreviewPalette);
                     SaveFrame(Find<TableLayoutPanel>(page, "appearanceOptions"), Path.Combine(output, $"color-modes-{mode}-{dpi}.png"));
-                    await VerifySettingsDividersAsync(page, page.PreviewPalette, output);
+                    if (theme == SoftwareStyle.Claude) await VerifySettingsDividersAsync(page, page.PreviewPalette, output);
                 }
                 finally
                 {
@@ -570,20 +585,218 @@ internal static class SoftwareStyleRegression
         finally { UiLanguage.Apply(previous); }
     }
 
-    internal static async Task RunAsync(MainForm main)
+    internal static async Task RunAsync(MainForm main, SoftwareStyle theme = SoftwareStyle.Default)
     {
-        string output = Path.GetFullPath("artifacts/software-style");
+        string output = Path.GetFullPath(theme switch
+        {
+            SoftwareStyle.MetroClassic => $"artifacts/metro-style/{main.DeviceDpi}",
+            SoftwareStyle.WinUI => $"artifacts/winui-style/{main.DeviceDpi}",
+            SoftwareStyle.MaterialYou => $"artifacts/material-style/{main.DeviceDpi}",
+            _ => "artifacts/software-style"
+        });
         Directory.CreateDirectory(output);
         string scratch = Directory.CreateDirectory(Path.Combine(output, "preferences-" + Guid.NewGuid().ToString("N"))).FullName;
         string preferencesPath = Path.Combine(scratch, "preferences.json");
         string settingsPath = Path.Combine(scratch, "scrolling.json");
-        try { await VerifyAsync(main, output, preferencesPath, settingsPath); }
+        try
+        {
+            if (theme is SoftwareStyle.MaterialYou or SoftwareStyle.WinUI or SoftwareStyle.MetroClassic)
+                await VerifyAdditionalStyleAsync(main, output, preferencesPath, settingsPath, theme);
+            else await VerifyAsync(main, output, preferencesPath, settingsPath);
+        }
         finally
         {
             File.Delete(preferencesPath);
             File.Delete(settingsPath);
             Directory.Delete(scratch);
         }
+    }
+
+    private static void VerifyAdditionalStyleSettings(SettingsPage page)
+    {
+        CapturePalette palette = page.PreviewPalette;
+        SettingsChoice style = Find<SettingsChoice>(page, "softwareStyleSelector");
+        SettingsChoice language = Find<SettingsChoice>(page, "languageSelector");
+        Check(style.Width == language.Width && style.Height == language.Height && style.Right == language.Right,
+            $"{palette.Style} selectors align at {page.DeviceDpi} DPI");
+        if (palette.IsMetro)
+        {
+            int available = style.Width - (int)Math.Ceiling((ButtonSpacing.Horizontal + 34) * style.DeviceDpi / 96f);
+            int caption = TextRenderer.MeasureText(style.Text, style.Font, Size.Empty, TextFormatFlags.NoPadding).Width;
+            Check(caption <= available, "the theme name fits in the selector");
+        }
+        CheckButtonFace(style, claude: true);
+        ThemeOption[] cards = Find<Control>(page, "appearanceOptions").Controls.OfType<ThemeOption>().ToArray();
+        Check(cards.Length == 3 && cards.Count(option => option.Checked) == 1, "color mode has one selection");
+        foreach (ThemeOption option in cards)
+        {
+            option.SettleSelection();
+            ((UiTween)typeof(ThemeOption).GetField("hover", Members)!.GetValue(option)!).SnapTo(0);
+            using Bitmap bitmap = RenderControl(option);
+            float scale = option.DeviceDpi / 96f;
+            int y = bitmap.Height / 2 - (int)MathF.Round(25 * scale);
+            Color expected = option.Checked ? palette.IsMetro ? palette.Accent : palette.Tint : palette.Surface;
+            Color top = bitmap.GetPixel(bitmap.Width / 2, y);
+            Check(top.ToArgb() == expected.ToArgb(),
+                $"{option.Name} paints its tonal fill at {option.DeviceDpi} DPI");
+            CheckButtonFace(option, claude: true);
+        }
+        Check(Find<MotionToggle>(page, "transparencyToggle").Enabled == palette.SupportsBackdrop,
+            "settings show the correct backdrop control for the style");
+    }
+
+    private static async Task VerifyAdditionalStyleAsync(MainForm main, string output, string preferencesPath, string settingsPath, SoftwareStyle theme)
+    {
+        VerifyStyleContrast(theme);
+        typeof(MainForm).GetField("preferencesPath", Members)!.SetValue(main, preferencesPath);
+        typeof(MainForm).GetField("settingsPath", Members)!.SetValue(main, settingsPath);
+        main.TopMost = true;
+        main.ForceActivate();
+        Button settings = Find<Button>(main, "settingsButton");
+        Color startingBackground = main.BackColor;
+        settings.PerformClick();
+        SettingsPage page = Find<SettingsPage>(main, "SettingsPage");
+        SettingsChoice style = Find<SettingsChoice>(page, "softwareStyleSelector");
+        Check(style.Items.Count == 5 && (int)SoftwareStyle.Default == 0 && (int)SoftwareStyle.Claude == 1 &&
+            (int)SoftwareStyle.MaterialYou == 2 && (int)SoftwareStyle.WinUI == 3 && (int)SoftwareStyle.MetroClassic == 4,
+            "the selector has five styles with their original preference IDs");
+        style.SelectedIndex = (int)theme - 1;
+        style.Focus();
+        MethodInfo fieldKey = typeof(SettingsChoice).GetMethod("ProcessCmdKey", Members)!;
+        MethodInfo menuKey = typeof(ToolStripDropDown).GetMethod("ProcessDialogKey", Members)!;
+        ToolStripDropDownMenu OpenMenu()
+        {
+            fieldKey.Invoke(style, [default(Message), Keys.F4]);
+            return (ToolStripDropDownMenu)typeof(SettingsChoice).GetField("menu", Members)!.GetValue(style)!;
+        }
+        ToolStripDropDownMenu menu = OpenMenu();
+        menuKey.Invoke(menu, [Keys.Down]);
+        menuKey.Invoke(menu, [Keys.Enter]);
+        Check(style.SelectedIndex == (int)theme && style.Focused && menu.IsDisposed,
+            $"keyboard selection previews {theme} and returns to a single focused field");
+        Find<Button>(page, "cancelSettingsButton").PerformClick();
+        Check(main.BackColor == startingBackground && !File.Exists(preferencesPath), "cancel returns to the previous style");
+
+        foreach (AppearanceMode mode in new[] { AppearanceMode.Light, AppearanceMode.Dark })
+        {
+            string shade = mode.ToString().ToLowerInvariant();
+            if (mode == AppearanceMode.Dark) main.Size = main.MinimumSize;
+            settings.PerformClick();
+            style.SelectedIndex = (int)theme;
+            Find<RadioButton>(page, "theme" + mode).Checked = true;
+            CapturePalette palette = CapturePalette.For(mode, theme);
+            await Task.Delay(280);
+            Check(main.BackColor == palette.Background && page.BackColor == palette.Background, $"{theme} previews the selected color mode");
+            VerifyAdditionalStyleSettings(page);
+            MotionToggle transparency = Find<MotionToggle>(page, "transparencyToggle");
+            if (palette.IsWinUI)
+            {
+                var backdrop = (WindowBackdrop)typeof(MainForm).GetField("windowBackdrop", Members)!.GetValue(main)!;
+                transparency.Checked = true;
+                Check(backdrop.IsActive == WindowBackdrop.IsSupported(), $"{theme} enables the native backdrop when available");
+                transparency.Checked = false;
+                Check(!backdrop.IsActive, $"{theme} uses the solid palette when transparency is off");
+            }
+            style.Focus();
+            VerifyBorderPixels(style, palette.Accent, 1.5f);
+            SaveFrame(main, Path.Combine(output, $"settings-{shade}.png"));
+            menu = OpenMenu();
+            Check(menu.Region != null && menu.Visible && menu.Region.IsVisible(0, 0) == palette.IsMetro,
+                "the solid menu uses the style's popup geometry");
+            SaveFrame(menu, Path.Combine(output, $"menu-{shade}.png"));
+            menuKey.Invoke(menu, [Keys.Escape]);
+            SettingsDisclosure disclosure = Find<SettingsDisclosure>(page, "scrollingOptionsButton");
+            disclosure.PerformClick();
+            SettingsReveal reveal = Find<SettingsReveal>(page, "scrollingReveal");
+            reveal.Finish();
+            Check(reveal.Height > 0 && Find<SettingsChoice>(reveal, "cbScrollMethod").BackColor == palette.Canvas,
+                "the inline scrolling options use the active field colors");
+            if (palette.IsWinUI)
+                Check(reveal.Region is { } clip && !clip.IsVisible(reveal.Width / 2, reveal.Height - 1),
+                    "the expanded scrolling fields leave the card's bottom edge visible");
+            foreach (CaptureShortcut action in ApplicationPreferences.Actions) Find<Button>(page, action.Kind + "Clear").PerformClick();
+            Find<Button>(page, "saveSettingsButton").PerformClick();
+            ApplicationPreferences saved = ApplicationPreferences.Load(preferencesPath);
+            Check(saved.Style == theme && saved.Appearance == mode, $"{theme} and its color mode survive reading the saved preferences");
+            VerifyWorkspaceLayout(main);
+            Check(Find<PreviewSurface>(main, "previewSurface").Palette == palette &&
+                Find<Control>(main, "previewToolbar").BackColor == (palette.IsMaterial ? palette.Surface : palette.Background),
+                "preview and toolbar use the active tonal surfaces");
+            await Task.Delay(280);
+            CaptureModeButton region = Find<CaptureModeButton>(main, "regionButton");
+            UiTween hover = (UiTween)typeof(CaptureModeButton).GetField("hover", Members)!.GetValue(region)!;
+            Color RegionFill(float amount)
+            {
+                hover.SnapTo(amount);
+                using Bitmap bitmap = RenderControl(region);
+                return bitmap.GetPixel(bitmap.Width / 2, (int)Math.Round(7 * region.DeviceDpi / 96f));
+            }
+            if (palette.IsMetro)
+            {
+                Check(RegionFill(1).ToArgb() != RegionFill(0).ToArgb() &&
+                    RegionFill(0).ToArgb() != region.Parent!.BackColor.ToArgb(),
+                    "the Metro capture tile is colored at rest and responds to hover");
+            }
+            else
+            {
+                Check(RegionFill(1).ToArgb() == palette.Hover.ToArgb() &&
+                    RegionFill(0).ToArgb() == region.Parent!.BackColor.ToArgb(),
+                    "the region screenshot button uses the toolbar surface at rest and keeps its hover feedback");
+            }
+            SaveFrame(main, Path.Combine(output, $"workspace-{shade}.png"));
+
+            using ScrollingOptionsDialog options = new(new(), palette, transparent: false);
+            options.Show(main);
+            Check(options.BackColor == palette.Background && ((Button)options.AcceptButton!).BackColor == palette.Accent,
+                "the scrolling dialog shares the panel colors and filled primary action");
+            SaveFrame(options, Path.Combine(output, $"scrolling-options-{shade}.png"));
+            options.Close();
+        }
+        settings.PerformClick();
+        Check(style.SelectedIndex == (int)theme, "reopening settings shows the saved style");
+        Find<RadioButton>(page, "themeSystem").Checked = true;
+        Check(main.BackColor == CapturePalette.For(AppearanceMode.System, theme).Background,
+            $"{theme} follows Windows light and dark mode when requested");
+        Find<Button>(page, "resetSettingsButton").PerformClick();
+        Check(style.SelectedIndex == (int)SoftwareStyle.Default && Find<MotionToggle>(page, "transparencyToggle").Enabled,
+            "switching back restores default transparency controls");
+    }
+
+    private static void VerifyStyleContrast(SoftwareStyle theme)
+    {
+        static double Linear(byte channel)
+        {
+            double value = channel / 255d;
+            return value <= .04045 ? value / 12.92 : Math.Pow((value + .055) / 1.055, 2.4);
+        }
+        static double Luma(Color color) => .2126 * Linear(color.R) + .7152 * Linear(color.G) + .0722 * Linear(color.B);
+        static double Contrast(Color a, Color b)
+        {
+            double first = Luma(a) + .05, second = Luma(b) + .05;
+            return Math.Max(first, second) / Math.Min(first, second);
+        }
+
+        double minimumText = double.MaxValue, minimumOutline = double.MaxValue;
+        IEnumerable<CapturePalette> palettes = theme switch
+        {
+            SoftwareStyle.MetroClassic => [CapturePalette.MetroLight, CapturePalette.MetroDark],
+            SoftwareStyle.WinUI => [CapturePalette.WinUILight, CapturePalette.WinUIDark],
+            _ => from seed in new[] { Color.Black, Color.White, Color.Gray, Color.Red, Color.Yellow, Color.Lime,
+                  Color.Cyan, Color.Blue, Color.Purple, Color.DeepPink, Color.SandyBrown, Color.Teal }
+                 from dark in new[] { false, true }
+                 select MaterialPalette.Create(seed, dark)
+        };
+        foreach (CapturePalette p in palettes)
+        {
+            Color pressed = p.PrimaryFill(1, 1);
+            minimumText = Math.Min(minimumText, new[] { Contrast(p.Text, p.Background), Contrast(p.Secondary, p.RaisedSurface),
+                Contrast(p.AccentText, p.Accent), Contrast(p.AccentText, pressed), Contrast(p.TintText, p.Tint) }.Min());
+            minimumOutline = Math.Min(minimumOutline, Contrast(p.FieldBorder, p.RaisedSurface));
+        }
+        Check(minimumText >= 4.5 && minimumOutline >= 3, $"{theme} contrast is {minimumText:F2}:1 for text and {minimumOutline:F2}:1 for field outlines");
+        if (theme == SoftwareStyle.MaterialYou)
+            Check(MaterialPalette.Create(Color.Cyan, false) != MaterialPalette.Create(Color.Purple, false),
+                "changing the Windows seed changes the generated palette");
     }
 
     private static async Task VerifyAsync(MainForm main, string output, string preferencesPath, string settingsPath)
@@ -594,6 +807,11 @@ internal static class SoftwareStyleRegression
             "preferences from earlier builds retain their settings and default style");
         File.WriteAllText(preferencesPath, """{"Appearance":2,"Style":100}""");
         Check(ApplicationPreferences.Load(preferencesPath).Style == SoftwareStyle.Default, "unknown styles fall back to the default");
+        File.WriteAllText(preferencesPath, """{"Appearance":2,"Style":5,"TransparencyEnabled":false,"AnimationsEnabled":false,"Shortcuts":{"region":0}}""");
+        ApplicationPreferences retired = ApplicationPreferences.Load(preferencesPath);
+        Check(retired.Style == SoftwareStyle.Default && retired.Appearance == AppearanceMode.Dark &&
+            !retired.TransparencyEnabled && !retired.AnimationsEnabled && retired.Shortcuts["region"] == Keys.None,
+            "the retired style ID falls back without losing other preferences");
         File.Delete(preferencesPath);
         typeof(MainForm).GetField("preferencesPath", Members)!.SetValue(main, preferencesPath);
         typeof(MainForm).GetField("settingsPath", Members)!.SetValue(main, settingsPath);

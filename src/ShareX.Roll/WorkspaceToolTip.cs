@@ -52,15 +52,22 @@ internal sealed class WorkspaceToolTip : Control
 
         int left = Math.Clamp(center.X - width / 2, margin, viewport.ClientSize.Width - width - margin);
         Bounds = new Rectangle(left, margin, width, height);
-        using GraphicsPath outline = CaptureDrawing.Rounded(ClientRectangle, CornerRadius * scale);
+        RefreshAppearance();
+        BringToFront();
+        Show();
+    }
+
+    internal void RefreshAppearance()
+    {
+        if (current == null) return;
+        using GraphicsPath outline = CaptureDrawing.Rounded(ClientRectangle, Radius(palette()));
         Region? previous = Region;
         Region = new Region(outline);
         previous?.Dispose();
-        BringToFront();
-        Show();
         Invalidate();
     }
 
+    private float Radius(CapturePalette colors) => colors.CornerRadius(colors.IsMaterial ? MaterialPalette.FieldRadius : CornerRadius) * scale;
     private int D(int value) => (int)Math.Round(value * scale);
 
     private void HideFor(CaptureModeButton command)
@@ -77,9 +84,9 @@ internal sealed class WorkspaceToolTip : Control
     protected override void OnPaint(PaintEventArgs e)
     {
         CapturePalette colors = palette();
-        e.Graphics.Clear(colors.Surface);
+        e.Graphics.Clear(colors.UsesFilledActions ? colors.RaisedSurface : colors.Surface);
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        CaptureDrawing.DrawInsideBorder(e.Graphics, ClientRectangle, CornerRadius * scale, colors.Border, scale);
+        CaptureDrawing.DrawInsideBorder(e.Graphics, ClientRectangle, Radius(colors), colors.Border, scale);
         Rectangle caption = ClientRectangle;
         caption.Inflate(-D(10), 0);
         TextRenderer.DrawText(e.Graphics, Text, Font, caption, colors.Text,

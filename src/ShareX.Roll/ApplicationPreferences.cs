@@ -5,7 +5,7 @@ using Newtonsoft.Json;
 namespace ShareX.Roll;
 
 internal enum AppearanceMode { System, Light, Dark }
-internal enum SoftwareStyle { Default, Claude }
+internal enum SoftwareStyle { Default, Claude, MaterialYou, WinUI, MetroClassic }
 
 internal sealed record CaptureShortcut(string Kind, string TitleKey, Keys ModeKey)
 {
@@ -29,7 +29,7 @@ internal sealed class ApplicationPreferences
     public string DefaultSaveFolder { get; set; } = "";
     [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
     public Dictionary<string, Keys> Shortcuts { get; set; } = Actions.ToDictionary(
-        action => action.Kind, action => Keys.Control | Keys.Shift | action.ModeKey);
+        action => action.Kind, _ => Keys.None);
 
     internal ApplicationPreferences Clone() => new()
     {
@@ -71,7 +71,7 @@ internal sealed class ApplicationPreferences
         foreach (CaptureShortcut action in Actions)
         {
             if (!value.Shortcuts.TryGetValue(action.Kind, out Keys keys))
-                value.Shortcuts[action.Kind] = Keys.Control | Keys.Shift | action.ModeKey;
+                value.Shortcuts[action.Kind] = Keys.None;
             else if (!IsSupported(keys)) throw new JsonException(action.Title + L("InvalidShortcutSuffix"));
         }
         return value;

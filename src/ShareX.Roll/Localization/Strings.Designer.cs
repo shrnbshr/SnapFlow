@@ -8,6 +8,12 @@ internal static class Strings
     internal static string SoftwareStyle => UiText.L("SoftwareStyle");
     internal static string SoftwareStyleDefault => UiText.L("SoftwareStyleDefault");
     internal static string SoftwareStyleClaude => UiText.L("SoftwareStyleClaude");
+    internal static string SoftwareStyleMaterialYou => UiText.L("SoftwareStyleMaterialYou");
+    internal static string SoftwareStyleMaterialSolid => UiText.L("SoftwareStyleMaterialSolid");
+    internal static string SoftwareStyleWinUI => UiText.L("SoftwareStyleWinUI");
+    internal static string SoftwareStyleWinUIBackdrop => UiText.L("SoftwareStyleWinUIBackdrop");
+    internal static string SoftwareStyleMetroClassic => UiText.L("SoftwareStyleMetroClassic");
+    internal static string SoftwareStyleMetroSolid => UiText.L("SoftwareStyleMetroSolid");
     internal static string SoftwareStyleSolid => UiText.L("SoftwareStyleSolid");
     internal static string PreviewZoomControls => UiText.L("PreviewZoomControls");
     internal static string PreviewZoomOut => UiText.L("PreviewZoomOut");

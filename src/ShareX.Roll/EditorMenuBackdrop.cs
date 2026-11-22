@@ -12,12 +12,12 @@ internal sealed class EditorMenuBackdrop : NativeWindow, IDisposable
     private readonly ToolStripDropDown menu;
     private readonly CapturePalette palette;
     private readonly bool transparency;
-    private static readonly CompositionSetter? setComposition = FindCompositionSetter();
     private readonly ShadowWindow shadow = new();
     private readonly Dictionary<Control, EditorOptionSurface> children = new();
     private IntPtr memoryDc, bitmap, previousBitmap, bits;
     private Size surfaceSize;
     private int[] pixels = [], coverage = [];
+    private (Size Size, int Dpi, bool Native)? appliedCorners;
     private bool painting, disposed, applied;
     internal bool IsActive { get; private set; }
 
@@ -25,27 +25,21 @@ internal sealed class EditorMenuBackdrop : NativeWindow, IDisposable
     {
         this.menu = menu;
         this.palette = palette;
-        this.transparency = transparency;
+        this.transparency = transparency && !palette.IsMaterial && !palette.IsMetro;
         menu.HandleCreated += HandleCreated;
         menu.HandleDestroyed += HandleDestroyed;
         menu.Opened += Opened;
         menu.Closed += Closed;
         menu.VisibleChanged += VisibleChanged;
         menu.SizeChanged += GeometryChanged;
-        menu.LocationChanged += GeometryChanged;
+        menu.LocationChanged += LocationChanged;
         menu.Disposed += MenuDisposed;
         SystemEvents.UserPreferenceChanged += PreferenceChanged;
         ObserveChildren(menu);
         if (menu.IsHandleCreated) Attach();
     }
 
-    private uint RemovedMenuMatte()
-    {
-        uint transmission = palette.Background.GetBrightness() < .5f ? 88u : 112u;
-        Color color = palette.Background;
-        return transmission << 24 | ((color.R * transmission + 127) / 255) << 16 |
-            ((color.G * transmission + 127) / 255) << 8 | (color.B * transmission + 127) / 255;
-    }
+    private int CornerRadius => palette.MenuRadius;
 
     private void ObserveChildren(Control parent)
     {
@@ -56,7 +50,7 @@ internal sealed class EditorMenuBackdrop : NativeWindow, IDisposable
     private void ObserveChild(Control child)
     {
         if (children.ContainsKey(child)) return;
-        children.Add(child, new EditorOptionSurface(child, () => IsActive, palette, RemovedMenuMatte()));
+        children.Add(child, new EditorOptionSurface(child, () => IsActive, palette, BackdropSnapshot.RemovedMenuMatte(palette)));
         child.Disposed += ChildDisposed;
         ObserveChildren(child);
     }
@@ -86,6 +80,7 @@ internal sealed class EditorMenuBackdrop : NativeWindow, IDisposable
         ReleaseHandle();
         ReleaseSurface();
         shadow.Release();
+        appliedCorners = null;
         IsActive = applied = false;
     }
     private void Opened(object? sender, EventArgs e)
@@ -101,11 +96,10 @@ internal sealed class EditorMenuBackdrop : NativeWindow, IDisposable
     }
     private void GeometryChanged(object? sender, EventArgs e)
     {
-        // EditorOverflow maintains a Region for the opaque fallback before this handler runs.
-        // Reassert native corners when its new size belongs to an active frosted popup.
-        if (IsActive) ApplyCorners(true);
+        ApplyCorners();
         UpdateShadow();
     }
+    private void LocationChanged(object? sender, EventArgs e) => UpdateShadow();
     private void MenuDisposed(object? sender, EventArgs e) => Dispose();
     private void PreferenceChanged(object sender, UserPreferenceChangedEventArgs e)
     {
@@ -137,28 +131,19 @@ internal sealed class EditorMenuBackdrop : NativeWindow, IDisposable
             bool ready = NativeMethods.DwmSetWindowAttribute(menu.Handle, 38, ref material, sizeof(int)) >= 0;
             ready &= NativeMethods.DwmExtendFrameIntoClientArea(menu.Handle, ref margins) >= 0;
             NativeMethods.UseImmersiveDarkMode(menu.Handle, palette.Background.GetBrightness() < .5f);
-            SetRedirectionAlpha(active);
-            IsActive = active && ready && SetAccentPolicy(true);
+            WindowBackdrop.SetRedirectionAlpha(menu.Handle, active);
+            IsActive = active && ready && WindowBackdrop.SetAccentBlur(menu.Handle, true);
             if (!IsActive) DisableMaterial();
             applied = true;
             menu.Invalidate(true);
         }
-        ApplyCorners(IsActive);
-    }
-
-    private void SetRedirectionAlpha(bool enabled)
-    {
-        // Explicit redirection alpha is available on 24H2+. Native blur predates this attribute,
-        // so an older Windows version or a failed optional attribute must not block the material.
-        if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 26100) || !menu.IsHandleCreated) return;
-        int value = enabled ? 1 : 0;
-        NativeMethods.DwmSetWindowAttribute(menu.Handle, 39, ref value, sizeof(int));
+        ApplyCorners();
     }
 
     private void DisableMaterial()
     {
-        SetAccentPolicy(false);
-        SetRedirectionAlpha(false);
+        WindowBackdrop.SetAccentBlur(menu.Handle, false);
+        WindowBackdrop.SetRedirectionAlpha(menu.Handle, false);
         int material = 1;
         MARGINS margins = default;
         NativeMethods.DwmSetWindowAttribute(menu.Handle, 38, ref material, sizeof(int));
@@ -167,9 +152,13 @@ internal sealed class EditorMenuBackdrop : NativeWindow, IDisposable
         ReleaseSurface();
     }
 
-    private void ApplyCorners(bool native)
+    private void ApplyCorners()
     {
-        if (menu.IsDisposed || menu.Width <= 0 || menu.Height <= 0) return;
+        if (disposed || !menu.IsHandleCreated || menu.ClientSize.Width <= 0 || menu.ClientSize.Height <= 0) return;
+        bool native = IsActive;
+        var geometry = (menu.ClientSize, menu.DeviceDpi, native);
+        if (appliedCorners == geometry) return;
+        appliedCorners = geometry;
         int corners = native ? 2 : 1;
         NativeMethods.DwmSetWindowAttribute(menu.Handle, 33, ref corners, sizeof(int));
         int border = SystemInformation.HighContrast ? unchecked((int)0xFFFFFFFF) : unchecked((int)0xFFFFFFFE);
@@ -178,44 +167,21 @@ internal sealed class EditorMenuBackdrop : NativeWindow, IDisposable
         if (native) menu.Region = null;
         else
         {
-            using GraphicsPath outline = CaptureDrawing.Rounded(new RectangleF(0, 0, menu.Width, menu.Height),
-                (int)Math.Round(10 * menu.DeviceDpi / 96f));
+            using GraphicsPath outline = CaptureDrawing.Rounded(menu.ClientRectangle, CornerRadius * menu.DeviceDpi / 96f);
             menu.Region = new Region(outline);
         }
         previous?.Dispose();
     }
 
-    private static CompositionSetter? FindCompositionSetter()
-    {
-        IntPtr module = GetModuleHandle("user32.dll");
-        IntPtr address = module == IntPtr.Zero ? IntPtr.Zero : GetProcAddress(module, "SetWindowCompositionAttribute");
-        return address == IntPtr.Zero ? null : Marshal.GetDelegateForFunctionPointer<CompositionSetter>(address);
-    }
-
-    private bool SetAccentPolicy(bool enabled)
-    {
-        if (setComposition == null || !menu.IsHandleCreated) return !enabled;
-        // The compositor supplies blur; the premultiplied surface above supplies a readable theme tint.
-        AccentPolicy accent = new() { State = enabled ? 3 : 0 };
-        IntPtr memory = Marshal.AllocHGlobal(Marshal.SizeOf<AccentPolicy>());
-        try
-        {
-            Marshal.StructureToPtr(accent, memory, false);
-            CompositionData data = new() { Attribute = 19, Data = memory, Size = (nuint)Marshal.SizeOf<AccentPolicy>() };
-            return setComposition(menu.Handle, ref data);
-        }
-        finally { Marshal.FreeHGlobal(memory); }
-    }
-
     private void UpdateShadow()
     {
-        if (disposed || !menu.IsHandleCreated || !menu.Visible || SystemInformation.HighContrast || palette.IsClaude)
+        if (disposed || !menu.IsHandleCreated || !menu.Visible || SystemInformation.HighContrast || palette.IsClaude || palette.IsMetro)
         {
             shadow.Release();
             return;
         }
         // A failed shadow is decorative only; the original menu stays usable and keeps its native fallback.
-        if (!shadow.ShowBehind(menu, palette.Background.GetBrightness() < .5f)) shadow.Release();
+        if (!shadow.ShowBehind(menu, palette.Background.GetBrightness() < .5f, CornerRadius)) shadow.Release();
     }
 
     protected override void WndProc(ref Message message)
@@ -237,12 +203,18 @@ internal sealed class EditorMenuBackdrop : NativeWindow, IDisposable
         if (message.Msg is 0x47 or 0x2E0) // WM_WINDOWPOSCHANGED / WM_DPICHANGED.
         {
             base.WndProc(ref message);
+            if (message.Msg == 0x2E0) ApplyCorners();
             UpdateShadow();
             return;
         }
         if (!IsActive || painting || message.Msg != 0xF || message.WParam != IntPtr.Zero
-            || menu.ClientSize.Width <= 0 || menu.ClientSize.Height <= 0
-            || menu.Renderer is not EditorToolStripRenderer renderer)
+            || menu.ClientSize.Width <= 0 || menu.ClientSize.Height <= 0)
+        {
+            base.WndProc(ref message);
+            return;
+        }
+        EditorToolStripRenderer? renderer = menu.Renderer as EditorToolStripRenderer;
+        if (renderer == null)
         {
             base.WndProc(ref message);
             return;
@@ -251,7 +223,7 @@ internal sealed class EditorMenuBackdrop : NativeWindow, IDisposable
         {
             // Restore opaque rendering rather than leaving an unpainted transparent popup.
             DisableMaterial();
-            ApplyCorners(false);
+            ApplyCorners();
             base.WndProc(ref message);
             return;
         }
@@ -266,14 +238,15 @@ internal sealed class EditorMenuBackdrop : NativeWindow, IDisposable
                 SendMessage(message.HWnd, 0x318, memoryDc, new IntPtr(4 | 8));
                 GdiFlush();
                 Marshal.Copy(bits, pixels, 0, pixels.Length);
+                Span<uint> output = MemoryMarshal.Cast<int, uint>(pixels.AsSpan());
+                uint matte = BackdropSnapshot.RemovedMenuMatte(palette);
                 bool previousCoverage = renderer.PaintingCoverage;
                 renderer.PaintingCoverage = true;
                 try { SendMessage(message.HWnd, 0x318, memoryDc, new IntPtr(4 | 8)); }
                 finally { renderer.PaintingCoverage = previousCoverage; }
                 GdiFlush();
                 Marshal.Copy(bits, coverage, 0, coverage.Length);
-                BackdropSnapshot.RemoveButtonMatte(MemoryMarshal.Cast<int, uint>(pixels.AsSpan()), coverage,
-                    RemovedMenuMatte());
+                BackdropSnapshot.RemoveButtonMatte(output, coverage, matte);
                 Marshal.Copy(pixels, 0, bits, pixels.Length);
                 BitBlt(dc, 0, 0, surfaceSize.Width, surfaceSize.Height, memoryDc, 0, 0, 0x00CC0020);
             }
@@ -331,12 +304,11 @@ internal sealed class EditorMenuBackdrop : NativeWindow, IDisposable
         menu.Closed -= Closed;
         menu.VisibleChanged -= VisibleChanged;
         menu.SizeChanged -= GeometryChanged;
-        menu.LocationChanged -= GeometryChanged;
+        menu.LocationChanged -= LocationChanged;
         menu.Disposed -= MenuDisposed;
         if (menu.IsHandleCreated && !menu.IsDisposed && !menu.Disposing)
         {
             DisableMaterial();
-            ApplyCorners(false);
             menu.Invalidate(true);
         }
         IsActive = false;
@@ -353,7 +325,7 @@ internal sealed class EditorMenuBackdrop : NativeWindow, IDisposable
         private bool dark;
         private int gutter;
 
-        internal bool ShowBehind(ToolStripDropDown menu, bool isDark)
+        internal bool ShowBehind(ToolStripDropDown menu, bool isDark, float cornerRadius)
         {
             if (!GetWindowRect(menu.Handle, out NativeRect bounds)) return false;
             Size size = new(bounds.Right - bounds.Left, bounds.Bottom - bounds.Top);
@@ -362,7 +334,7 @@ internal sealed class EditorMenuBackdrop : NativeWindow, IDisposable
             float dpi = menu.DeviceDpi / 96f;
             try
             {
-                if (!EnsureTexture(size, dpi, isDark)) return false;
+                if (!EnsureTexture(size, dpi, isDark, cornerRadius * dpi)) return false;
                 if (Handle == IntPtr.Zero)
                 {
                     CreateHandle(new CreateParams
@@ -389,15 +361,15 @@ internal sealed class EditorMenuBackdrop : NativeWindow, IDisposable
             }
         }
 
-        private bool EnsureTexture(Size size, float dpi, bool isDark)
+        private bool EnsureTexture(Size size, float dpi, bool isDark, float radius)
         {
             if (memoryDc != IntPtr.Zero && menuSize == size && scale == dpi && dark == isDark) return true;
             ReleaseTexture();
             gutter = (int)Math.Ceiling(24 * dpi);
             textureSize = new(size.Width + 2 * gutter, size.Height + 2 * gutter);
             RectangleF face = new(gutter, gutter, size.Width, size.Height);
-            using Bitmap ambient = ButtonElevation.CreateShadow(textureSize, dpi, 5, 2, face, 10 * dpi, 5, false);
-            using Bitmap contact = ButtonElevation.CreateShadow(textureSize, dpi, 2, 1, face, 10 * dpi, 2, false);
+            using Bitmap ambient = ButtonElevation.CreateShadow(textureSize, dpi, 5, 2, face, radius, 5, false);
+            using Bitmap contact = ButtonElevation.CreateShadow(textureSize, dpi, 2, 1, face, radius, 2, false);
             using Bitmap texture = new(textureSize.Width, textureSize.Height, PixelFormat.Format32bppPArgb);
             using (Graphics graphics = Graphics.FromImage(texture))
             {
@@ -415,7 +387,7 @@ internal sealed class EditorMenuBackdrop : NativeWindow, IDisposable
                 // the exact rounded popup shape, including its corners.
                 graphics.CompositingMode = CompositingMode.SourceCopy;
                 graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                using GraphicsPath hole = CaptureDrawing.Rounded(face, 10 * dpi);
+                using GraphicsPath hole = CaptureDrawing.Rounded(face, radius);
                 using SolidBrush clear = new(Color.Transparent);
                 graphics.FillPath(clear, hole);
             }
@@ -474,11 +446,6 @@ internal sealed class EditorMenuBackdrop : NativeWindow, IDisposable
     }
 
     [StructLayout(LayoutKind.Sequential)] private struct NativePoint { public int X, Y; }
-    [StructLayout(LayoutKind.Sequential)] private struct AccentPolicy { public int State; public uint Flags, Gradient, Animation; }
-    [StructLayout(LayoutKind.Sequential)] private struct CompositionData { public int Attribute; public IntPtr Data; public nuint Size; }
-    [UnmanagedFunctionPointer(CallingConvention.Winapi, SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private delegate bool CompositionSetter(IntPtr window, ref CompositionData data);
     [StructLayout(LayoutKind.Sequential)] private struct NativeSize { public int Width, Height; }
     [StructLayout(LayoutKind.Sequential)] private struct NativeRect { public int Left, Top, Right, Bottom; }
     [StructLayout(LayoutKind.Sequential)] private struct BlendFunction { public byte Operation, Flags, Alpha, Format; }
@@ -496,8 +463,6 @@ internal sealed class EditorMenuBackdrop : NativeWindow, IDisposable
     [DllImport("user32.dll")] private static extern bool EndPaint(IntPtr window, ref PaintStruct paint);
     [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr window, int message, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] private static extern IntPtr WindowFromDC(IntPtr dc);
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr GetModuleHandle(string module);
-    [DllImport("kernel32.dll", CharSet = CharSet.Ansi, ExactSpelling = true)] private static extern IntPtr GetProcAddress(IntPtr module, string name);
     [DllImport("user32.dll", SetLastError = true)] private static extern bool GetWindowRect(IntPtr window, out NativeRect rectangle);
     [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr window);
     [DllImport("user32.dll", SetLastError = true)] private static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);

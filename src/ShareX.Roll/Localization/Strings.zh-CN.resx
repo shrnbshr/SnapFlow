@@ -296,6 +296,12 @@
   <data xml:space="preserve" name="SoftwareStyleDefault"><value>默认风格</value></data>
   <data xml:space="preserve" name="SoftwareStyleClaude"><value>Claude 风格</value></data>
   <data xml:space="preserve" name="SoftwareStyleSolid"><value>Claude 风格使用实色背景。</value></data>
+  <data xml:space="preserve" name="SoftwareStyleMaterialYou"><value>Material You 风格</value></data>
+  <data xml:space="preserve" name="SoftwareStyleMaterialSolid"><value>Material You 风格使用随 Windows 强调色变化的实色背景。</value></data>
+  <data xml:space="preserve" name="SoftwareStyleWinUI"><value>Windows 11（WinUI）</value></data>
+  <data xml:space="preserve" name="SoftwareStyleMetroClassic"><value>Metro 经典磁贴</value></data>
+  <data xml:space="preserve" name="SoftwareStyleMetroSolid"><value>经典磁贴主题使用实色背景。</value></data>
+  <data xml:space="preserve" name="SoftwareStyleWinUIBackdrop"><value>主窗口和编辑器使用云母材质，工具栏菜单使用亚克力材质。</value></data>
   <data name="EditorCloseHeading" xml:space="preserve"><value>保存修改？</value></data>
   <data name="EditorCloseDetail" xml:space="preserve"><value>关闭编辑器后，这张截图未保存的修改将丢失。</value></data>
   <data name="EditorCloseDiscard" xml:space="preserve"><value>不保存</value></data>

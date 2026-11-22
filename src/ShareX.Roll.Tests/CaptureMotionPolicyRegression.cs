@@ -11,7 +11,7 @@ internal static class CaptureMotionPolicyRegression
         Console.WriteLine("PASS: " + message);
     }
 
-    internal static async Task RunAsync(MainForm main)
+    internal static async Task RunAsync(MainForm main, SoftwareStyle style = SoftwareStyle.Default)
     {
         MethodInfo clone = typeof(RegionCaptureTasks).GetMethod("GetRegionCaptureOptions", BindingFlags.Static | BindingFlags.NonPublic)!;
         foreach (bool enabled in new[] { false, true })
@@ -26,8 +26,14 @@ internal static class CaptureMotionPolicyRegression
             "other capture hosts retain their default selection animation policy");
 
         bool original = UiMotion.UserEnabled;
+        ApplicationPreferences preferences = (ApplicationPreferences)typeof(MainForm).GetField("preferences", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(main)!;
+        SoftwareStyle originalStyle = preferences.Style;
+        bool themed = style != SoftwareStyle.Default;
+        MethodInfo apply = typeof(MainForm).GetMethod("ApplyAppearance", BindingFlags.Instance | BindingFlags.NonPublic)!;
         try
         {
+            if (themed) { preferences.Style = style; apply.Invoke(main, null); }
+            CapturePalette palette = CapturePalette.For(preferences.Appearance, preferences.Style);
             foreach (bool enabled in new[] { false, true })
             foreach (string kind in new[] { "region", "window", "scroll" })
             {
@@ -35,6 +41,7 @@ internal static class CaptureMotionPolicyRegression
                 bool expected = UiMotion.Enabled;
                 bool observed = false;
                 bool? actual = null;
+                Color overlayText = Color.Empty, overlaySurface = Color.Empty, scrollingSurface = Color.Empty;
                 SynchronizationContext context = SynchronizationContext.Current!;
                 bool finished = false;
                 int pending = 0;
@@ -47,6 +54,13 @@ internal static class CaptureMotionPolicyRegression
                     if (selector != null)
                     {
                         actual = selector.Options.EnableAnimations;
+                        if (themed)
+                        {
+                            const BindingFlags Members = BindingFlags.Instance | BindingFlags.NonPublic;
+                            overlayText = (Color)typeof(RegionCaptureForm).GetField("textColor", Members)!.GetValue(selector)!;
+                            overlaySurface = (Color)typeof(RegionCaptureForm).GetField("textBackgroundColor", Members)!.GetValue(selector)!;
+                            scrollingSurface = Application.OpenForms.OfType<ScrollingCaptureForm>().FirstOrDefault()?.BackColor ?? Color.Empty;
+                        }
                         observed = true;
                         finished = true;
                         selector.Close(); // Cancel without capturing or altering the clipboard.
@@ -66,6 +80,9 @@ internal static class CaptureMotionPolicyRegression
                 await main.CaptureAsync(kind);
                 finished = true;
                 Check(observed && actual == expected, $"{kind} actual selector honors effective animation policy={expected}");
+                if (themed)
+                    Check(overlayText == palette.Text && (overlaySurface.ToArgb() & 0xffffff) == (palette.Background.ToArgb() & 0xffffff) &&
+                        (kind != "scroll" || scrollingSurface == palette.Background), $"{kind} uses {style} surfaces and text in native panels");
                 Stopwatch closing = Stopwatch.StartNew();
                 while (Application.OpenForms.OfType<ScrollingCaptureForm>().Any() && closing.ElapsedMilliseconds < 2000)
                     await Task.Delay(20);
@@ -74,6 +91,10 @@ internal static class CaptureMotionPolicyRegression
                 Check(main.Visible, $"{kind} cancelled capture returns to the workspace");
             }
         }
-        finally { UiMotion.UserEnabled = original; }
+        finally
+        {
+            if (themed) { preferences.Style = originalStyle; apply.Invoke(main, null); }
+            UiMotion.UserEnabled = original;
+        }
     }
 }

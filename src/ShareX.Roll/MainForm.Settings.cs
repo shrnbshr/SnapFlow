@@ -146,7 +146,7 @@ public sealed partial class MainForm
         {
             HotkeyInfo hotkey = new(preferences.Shortcuts[action.Kind]);
             RegisterHotkey(hotkey);
-            // Preserve the existing fallback for the default scrolling shortcut only.
+            // Preserve the fallback for users who still have the former default scrolling shortcut saved.
             if (action.Kind == "scroll" && hotkey.Hotkey == (Keys.Control | Keys.Shift | Keys.S)
                 && hotkey.Status != HotkeyStatus.Registered)
             {

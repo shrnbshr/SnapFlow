@@ -197,18 +197,16 @@ internal static class AcrylicBackdropRegression
         Color pixel = Average(frame, center, Math.Max(1, main.DeviceDpi / 96));
         Check(pixel.R <= 2 && pixel.G <= 2 && pixel.B <= 2,
             context + $": solid black captured pixels remain black on screen ({pixel.R},{pixel.G},{pixel.B})");
-        Control surface = Field<Control>(main, "previewFrame");
         int D(int value) => (int)Math.Round(value * main.DeviceDpi / 96d);
         foreach (bool right in new[] { false, true })
         foreach (bool bottom in new[] { false, true })
         {
-            Point corner = new(right ? surface.Width - D(2) : D(2), bottom ? surface.Height - D(2) : D(2));
-            Point outside = new(right ? surface.Width + D(6) : -D(6), corner.Y);
-            Point ToFrame(Point point) => FramePoint(main, main.PointToClient(surface.PointToScreen(point)));
-            Color cornerColor = Average(frame, ToFrame(corner), 1);
-            Color surrounding = Average(frame, ToFrame(outside), 1);
-            Check(Distance(cornerColor, surrounding) <= 3,
-                context + $": preview {(bottom ? "bottom" : "top")}-{(right ? "right" : "left")} corner matches the surrounding Acrylic ({Distance(cornerColor, surrounding)})");
+            Point corner = new(right ? preview.Width - D(4) : D(4), bottom ? preview.Height - D(4) : D(4));
+            Point framePoint = FramePoint(main, main.PointToClient(preview.PointToScreen(corner)));
+            Color expected = image.Contains(corner) ? Color.Black : preview.BackColor;
+            Color pixelColor = Average(frame, framePoint, 1);
+            Check(Distance(pixelColor, expected) <= 3,
+                context + $": the full-width preview's {(bottom ? "bottom" : "top")}-{(right ? "right" : "left")} corner stays opaque");
         }
     }
 
@@ -419,7 +417,8 @@ internal static class AcrylicBackdropRegression
                 CapturePalette palette = CapturePalette.For(mode);
                 Control workspace = Field<Control>(main, "workspace");
                 ControlState[] initial = Snapshot(workspace);
-                Point glassSample = new(D(6), main.ClientSize.Height / 2);
+                Control toolbar = Find<Control>(main, "previewToolbar");
+                Point glassSample = main.PointToClient(toolbar.PointToScreen(new Point(D(6), toolbar.Height / 2)));
                 int radius = Math.Max(1, D(1));
                 foreach (bool enabled in new[] { false, true })
                 {

@@ -48,6 +48,8 @@ internal static class ScreenshotEditor
         {
             if (!editor.IsHandleCreated) return;
             NativeMethods.UseImmersiveDarkMode(editor.Handle, palette.Background.GetBrightness() < .5);
+            if (palette.IsMaterial || palette.IsMetro) DialogChrome.ApplyCaptionColors(editor.Handle, palette);
+            if (palette.IsMetro) DialogChrome.ApplySquareCorners(editor.Handle, square: true);
             backdrop.Apply(palette, transparency);
         }
         editor.HandleCreated += (_, _) => InitializeNativeAppearance();

@@ -9,6 +9,15 @@ public sealed partial class MainForm
     private WorkspaceToolTip workspaceTips = null!;
     private FlowLayoutPanel previewActions = null!;
 
+    private sealed class BufferedCommandGroup : FlowLayoutPanel
+    {
+        internal BufferedCommandGroup()
+        {
+            DoubleBuffered = true;
+            ResizeRedraw = true;
+        }
+    }
+
     private void InitializeWorkspaceLayout()
     {
         workspace = new TableLayoutPanel
@@ -75,7 +84,7 @@ public sealed partial class MainForm
         ApplyWorkspaceLanguage();
     }
 
-    private static FlowLayoutPanel CommandGroup(string name) => new()
+    private static FlowLayoutPanel CommandGroup(string name) => new BufferedCommandGroup()
     {
         Name = name, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
         WrapContents = false, Margin = Padding.Empty, Anchor = AnchorStyles.Left
@@ -118,7 +127,7 @@ internal sealed class AppMark : Control
         float s = DeviceDpi / 96f;
         Graphics g = e.Graphics;
         g.SmoothingMode = SmoothingMode.AntiAlias;
-        using GraphicsPath path = CaptureDrawing.Rounded(new RectangleF(0, 0, Width - 1, Height - 1), 10 * s);
+        using GraphicsPath path = CaptureDrawing.Rounded(new RectangleF(0, 0, Width - 1, Height - 1), Palette.CornerRadius(10) * s);
         using SolidBrush fill = new(Palette.Accent);
         g.FillPath(fill, path);
         CaptureDrawing.Icon(g, "region", new RectangleF(6 * s, 6 * s, Width - 12 * s, Height - 12 * s), Palette.AccentText);

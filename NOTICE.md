@@ -24,6 +24,15 @@ Copyright (c) 2007-2026 ShareX Team.
 - 滚动窗体增加可选的完成和选区取消事件，由主程序接收完整结果、返回主界面预览并关闭滚动窗体；主界面提供原有滚动参数入口。独立窗体默认流程保留。
 - 增加构建脚本及普通截图、完整滚动窗口流程、取消/停止和图像完整性回归。
 
+## 主题图标来源
+
+- Material You 使用 Google 的 Material Symbols Rounded，按 Apache-2.0 分发。见 [Google Material Symbols 文档](https://developers.google.com/fonts/docs/material_symbols)。
+- WinUI 使用微软 Fluent System Icons 的 Regular 图标，按 MIT 许可证分发。见 [Fluent System Icons](https://github.com/microsoft/fluentui-system-icons)。
+- Metro Classic 调用 Windows 随附的 Segoe MDL2 Assets。专业工具缺少对应符号或系统缺少该字体时，使用随包提供的 Fluent 图标。见 [微软 Segoe MDL2 图标文档](https://learn.microsoft.com/en-us/windows/apps/design/iconography/segoe-ui-symbol-font)。
+- Claude 的颜色参考 Anthropic 品牌指南，图形取自 Lucide。Lucide 及 Feather 的许可和署名随应用附上。见 [Anthropic 品牌指南](https://github.com/anthropics/skills/blob/main/skills/brand-guidelines/SKILL.md) 和 [Lucide](https://lucide.dev/)。
+
+嵌入资源将上游 SVG 转为透明位图，绘制时使用当前主题的前景色。每个按钮对应的上游名称和用于生成资源的固定版本见 `src/ShareX.Roll/Assets/ThemeIcons`。
+
 官方源码下载 ZIP 的 SHA-256：`E5C4AEF36210B20DD189C9F7474A1D6ECACCB2061F8F7AE0D88909BF40197299`。库代码修改、删除的语言范围及香港繁体资源来源见 `src/UPSTREAM.json`；早期逐文件相同的数量不适用于清理语言资源后的版本。
 
 先前的 22.0 开发版裁剪和独立 CaptureOnly 原型已弃用，仅在工作区 artifacts 中归档，不作为此版本源码或二进制分发。

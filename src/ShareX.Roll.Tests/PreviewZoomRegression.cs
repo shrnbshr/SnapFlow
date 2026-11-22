@@ -147,7 +147,8 @@ internal static class PreviewZoomRegression
             Control button = bar.Controls.Find("previewZoomIn", true).Single();
             float scale = bar.DeviceDpi / 96f;
             Point sample = new(button.Left + button.Width / 2, button.Top + (int)(3 * scale));
-            foreach (CapturePalette palette in new[] { CapturePalette.Light, CapturePalette.Dark })
+            foreach (CapturePalette palette in new[]
+                { CapturePalette.Light, CapturePalette.Dark, CapturePalette.WinUILight, CapturePalette.WinUIDark })
             {
                 preview.Palette = palette;
                 preview.ApplyViewportAppearance();
@@ -158,7 +159,8 @@ internal static class PreviewZoomRegression
                 using (Graphics g = Graphics.FromImage(image)) g.Clear(Color.Blue);
                 preview.Invalidate();
                 bar.DrawToBitmap(blue, bar.ClientRectangle);
-                string theme = palette == CapturePalette.Light ? "Light" : "Dark";
+                bool light = palette.Background.GetBrightness() >= .5f;
+                string theme = palette.Style + (light ? "-Light" : "-Dark");
                 Color a = red.GetPixel(sample.X, sample.Y), b = blue.GetPixel(sample.X, sample.Y);
                 Check(a.R > b.R + 25 && b.B > a.B + 25, theme + " preview pixels show through native zoom buttons");
                 using Bitmap material = new(bar.Width, bar.Height);
@@ -169,7 +171,8 @@ internal static class PreviewZoomRegression
                 preview.ZoomTransparencyEnabled = false;
                 using Bitmap opaque = new(bar.Width, bar.Height);
                 bar.DrawToBitmap(opaque, bar.ClientRectangle);
-                Check(opaque.GetPixel(sample.X, sample.Y).ToArgb() == palette.Surface.ToArgb(),
+                Color solidSurface = palette.UsesFilledActions ? palette.RaisedSurface : palette.Surface;
+                Check(opaque.GetPixel(sample.X, sample.Y).ToArgb() == solidSurface.ToArgb(),
                     theme + " transparency setting restores an opaque zoom toolbar");
                 preview.ZoomTransparencyEnabled = true;
                 using (Graphics g = Graphics.FromImage(image))
@@ -190,12 +193,12 @@ internal static class PreviewZoomRegression
                 }
                 Check(brightest - darkest < 12, theme + " frosted background suppresses sharp image detail behind the controls");
                 {
-                    bool light = palette == CapturePalette.Light;
                     using (Graphics g = Graphics.FromImage(image)) g.Clear(light ? Color.White : palette.Canvas);
                     preview.Invalidate();
                     using Bitmap solid = new(preview.Width, preview.Height);
                     preview.DrawToBitmap(solid, preview.ClientRectangle);
-                    solid.Save(Path.Combine(output, $"{(light ? "white" : "dark")}-background-{main.DeviceDpi}.png"), ImageFormat.Png);
+                    string background = palette.Style + (light ? "-white" : "-dark");
+                    solid.Save(Path.Combine(output, $"{background}-background-{main.DeviceDpi}.png"), ImageFormat.Png);
                 }
                 // Include patterned content in a complete preview for visual inspection.
                 using (Graphics g = Graphics.FromImage(image))

@@ -11,7 +11,7 @@ internal sealed class MotionToggle : CheckBox
     internal CapturePalette Palette
     {
         get => palette;
-        set { palette = value; ButtonPointerBounds.ApplyToggle(this, palette.IsClaude); }
+        set { palette = value; ButtonPointerBounds.ApplyToggle(this, palette); }
     }
 
     internal static RectangleF TrackBounds(Size size, float scale) =>
@@ -53,9 +53,28 @@ internal sealed class MotionToggle : CheckBox
         g.SmoothingMode = SmoothingMode.AntiAlias;
         g.Clear(Parent?.BackColor ?? p.Surface);
         RectangleF bounds = TrackBounds(ClientSize, s);
-        using GraphicsPath track = CaptureDrawing.Rounded(bounds, 12 * s);
+        float radius = p.CornerRadius(12) * s;
+        if (p.IsMaterial) CaptureDrawing.InsetAntialiasedFace(ref bounds, ref radius);
+        using GraphicsPath track = CaptureDrawing.Rounded(bounds, radius);
         Color trackColor, thumbColor;
-        if (p.IsClaude)
+        if (p.IsWinUI || p.IsMetro)
+        {
+            Color off = CaptureDrawing.Blend(p.Canvas, p.Hover, hover.Value);
+            trackColor = Enabled ? CaptureDrawing.Blend(off, p.Accent, position.Value) : p.Surface;
+            thumbColor = Enabled ? CaptureDrawing.Blend(p.Secondary, p.AccentText, position.Value) : p.FieldBorder;
+        }
+        else if (p.IsMaterial)
+        {
+            trackColor = CaptureDrawing.Blend(p.RaisedSurface, p.Accent, position.Value);
+            thumbColor = CaptureDrawing.Blend(p.FieldBorder, p.AccentText, position.Value);
+            if (Enabled) trackColor = CaptureDrawing.Blend(trackColor, thumbColor, hover.Value * .08f);
+            else
+            {
+                trackColor = CaptureDrawing.Blend(trackColor, p.Surface, .8f);
+                thumbColor = CaptureDrawing.Blend(p.Secondary, p.Surface, .40f);
+            }
+        }
+        else if (p.IsClaude)
         {
             Color off = CaptureDrawing.Blend(p.Surface, p.Hover, Enabled ? hover.Value * .4f : 0);
             trackColor = Enabled ? CaptureDrawing.Blend(off, p.Accent, position.Value) : off;
@@ -72,18 +91,20 @@ internal sealed class MotionToggle : CheckBox
         }
         using SolidBrush fill = new(trackColor);
         g.FillPath(fill, track);
-        float diameter = 18 * s;
+        float diameter = (p.IsWinUI ? 12 : p.IsMaterial ? 12 + 6 * position.Value : 18) * s;
         float thumbWidth = diameter + 3 * s * press.Value;
-        float x = bounds.X + 3 * s + position.Value * (bounds.Width - thumbWidth - 6 * s);
+        float inset = 3 * s + (18 * s - diameter) / 2;
+        float x = bounds.X + inset + position.Value * (bounds.Width - thumbWidth - 2 * inset);
         using SolidBrush thumb = new(thumbColor);
-        using GraphicsPath knob = CaptureDrawing.Rounded(new RectangleF(x, bounds.Y + 3 * s, thumbWidth, diameter), diameter / 2);
+        using GraphicsPath knob = CaptureDrawing.Rounded(new RectangleF(x, bounds.Y + (bounds.Height - diameter) / 2, thumbWidth, diameter),
+            p.CornerRadius(diameter / 2));
         g.FillPath(thumb, knob);
         bool focused = Focused && ShowFocusCues;
-        if (p.IsClaude)
+        if (p.HasShapedControls)
         {
             Color edge = !Enabled ? p.Border : CaptureDrawing.Blend(p.FieldBorder, p.Accent, position.Value);
             if (focused) edge = position.Value < .5f ? p.Accent : p.AccentText;
-            CaptureDrawing.DrawInsideBorder(g, bounds, 12 * s, edge, (focused ? 1.5f : 1) * s);
+            CaptureDrawing.DrawInsideBorder(g, bounds, radius, edge, (focused ? 1.5f : p.IsMaterial ? 1.5f : 1) * s);
         }
         else if (focused)
         {

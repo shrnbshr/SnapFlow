@@ -79,12 +79,13 @@ internal sealed class SettingsFolderField : Control
         graphics.SmoothingMode = SmoothingMode.AntiAlias;
         graphics.Clear(BackColor);
         RectangleF bounds = new(scale, scale, Width - 2 * scale, Height - 2 * scale);
-        using GraphicsPath shape = CaptureDrawing.Rounded(bounds, 10 * scale);
+        float radius = palette.CornerRadius(palette.IsWinUI ? CapturePalette.WinUIControlRadius : palette.IsMaterial ? MaterialPalette.FieldRadius : 10) * scale;
+        using GraphicsPath shape = CaptureDrawing.Rounded(bounds, radius);
         using SolidBrush fill = new(palette.Canvas);
         bool focused = ContainsFocus;
         graphics.FillPath(fill, shape);
-        if (palette.IsClaude)
-            CaptureDrawing.DrawInsideBorder(graphics, bounds, 10 * scale, focused ? palette.Accent : palette.FieldBorder, (focused ? 1.5f : 1) * scale);
+        if (palette.HasShapedControls)
+            CaptureDrawing.DrawInsideBorder(graphics, bounds, radius, focused ? palette.Accent : palette.FieldBorder, (focused ? 1.5f : 1) * scale);
         else if (focused || SystemInformation.HighContrast)
         {
             using Pen edge = new(CaptureDrawing.Blend(palette.Border, palette.Accent, focus.Value), (focused ? 1.5f : 1) * scale);

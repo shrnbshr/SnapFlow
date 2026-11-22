@@ -142,7 +142,7 @@ internal static class ColorDialogAppearance
                 TextFormatFlags.NoPadding | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine |
                 (rtl ? TextFormatFlags.Right | TextFormatFlags.RightToLeft : TextFormatFlags.Left));
             if (DialogChrome.HasKeyboardFocus(radio))
-                CaptureDrawing.DrawInsideBorder(g, radio.ClientRectangle, 3 * s, palette.Accent, s);
+                CaptureDrawing.DrawInsideBorder(g, radio.ClientRectangle, palette.CornerRadius(3) * s, palette.Accent, s);
         };
     }
 }

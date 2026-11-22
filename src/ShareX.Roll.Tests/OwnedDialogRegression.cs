@@ -10,7 +10,7 @@ internal static class OwnedDialogRegression
 {
     private const BindingFlags Members = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
 
-    internal static async Task RunAsync(MainForm main)
+    internal static async Task RunAsync(MainForm main, SoftwareStyle filter = SoftwareStyle.Default)
     {
         Directory.CreateDirectory("artifacts/image-editor");
         try
@@ -18,9 +18,14 @@ internal static class OwnedDialogRegression
             foreach ((string style, CapturePalette palette) in new[]
             {
                 ("default-light", CapturePalette.Light), ("default-dark", CapturePalette.Dark),
-                ("claude-light", CapturePalette.ClaudeLight), ("claude-dark", CapturePalette.ClaudeDark)
+                ("claude-light", CapturePalette.ClaudeLight), ("claude-dark", CapturePalette.ClaudeDark),
+                ("material-light", CapturePalette.For(AppearanceMode.Light, SoftwareStyle.MaterialYou)),
+                ("material-dark", CapturePalette.For(AppearanceMode.Dark, SoftwareStyle.MaterialYou)),
+                ("winui-light", CapturePalette.WinUILight), ("winui-dark", CapturePalette.WinUIDark),
+                ("metro-light", CapturePalette.MetroLight), ("metro-dark", CapturePalette.MetroDark)
             })
             {
+                if (filter != SoftwareStyle.Default && palette.Style != filter) continue;
                 palette.ApplyLibraryTheme();
                 using Bitmap source = new(480, 320);
                 using RegionCaptureForm editor = ScreenshotEditor.Create(source, palette);
@@ -146,7 +151,11 @@ internal static class OwnedDialogRegression
             foreach ((string style, CapturePalette palette) in new[]
             {
                 ("default-light", CapturePalette.Light), ("default-dark", CapturePalette.Dark),
-                ("claude-light", CapturePalette.ClaudeLight), ("claude-dark", CapturePalette.ClaudeDark)
+                ("claude-light", CapturePalette.ClaudeLight), ("claude-dark", CapturePalette.ClaudeDark),
+                ("material-light", CapturePalette.For(AppearanceMode.Light, SoftwareStyle.MaterialYou)),
+                ("material-dark", CapturePalette.For(AppearanceMode.Dark, SoftwareStyle.MaterialYou)),
+                ("winui-light", CapturePalette.WinUILight), ("winui-dark", CapturePalette.WinUIDark),
+                ("metro-light", CapturePalette.MetroLight), ("metro-dark", CapturePalette.MetroDark)
             })
             foreach (LanguageMode language in new[] { LanguageMode.SimplifiedChinese, LanguageMode.TraditionalChinese, LanguageMode.English })
             {
@@ -168,7 +177,7 @@ internal static class OwnedDialogRegression
                             context + ": client and action dimensions scale with the display");
                         Size caption = TextRenderer.MeasureText(detail.Text, detail.Font, new Size(detail.Width, 0),
                             TextFormatFlags.WordBreak);
-                        Check(heading.Text == Strings.EditorCloseHeading && heading.Font.Bold &&
+                        Check(heading.Text == Strings.EditorCloseHeading && heading.Font.Bold == !(palette.IsMaterial || palette.IsMetro) &&
                             detail.Text == Strings.EditorCloseDetail && detail.Height >= caption.Height &&
                             detail.ForeColor == palette.Secondary, $"{context}: both levels of text fit ({detail.Height}px available, {caption.Height}px required)");
                         Rectangle client = dialog.RectangleToScreen(dialog.ClientRectangle);
@@ -179,7 +188,31 @@ internal static class OwnedDialogRegression
                             VisibleBounds(cancel).Right < VisibleBounds(save).Left, context + ": all content fits without overlap");
                         Check(save.Text == Strings.Save && cancel.Text == Strings.Cancel && discard.Text == Strings.EditorCloseDiscard &&
                             dialog.AcceptButton == save && dialog.CancelButton == cancel, context + ": actions have explicit labels and keyboard defaults");
-                        if (!palette.IsClaude)
+                        Check(discard.Parent is TableLayoutPanel actions &&
+                            actions.GetColumn(discard) == 0 && actions.GetColumn(cancel) == 2 && actions.GetColumn(save) == 3,
+                            context + ": discard is on the left and cancel/save stay together on the right");
+                        if (palette.IsMaterial)
+                        {
+                            Color RestingBackground(Button button)
+                            {
+                                typeof(Control).GetMethod("OnMouseLeave", Members)!.Invoke(button, [EventArgs.Empty]);
+                                using Bitmap image = new(button.Width, button.Height);
+                                button.DrawToBitmap(image, button.ClientRectangle);
+                                return image.GetPixel(button.Width / 2, (int)Math.Round(7 * scale));
+                            }
+                            Check(RestingBackground(discard).ToArgb() == palette.Surface.ToArgb() &&
+                                RestingBackground(cancel).ToArgb() == palette.RaisedSurface.ToArgb() &&
+                                RestingBackground(save).ToArgb() == palette.Accent.ToArgb(),
+                                context + ": cancel and save keep their fills when the pointer leaves");
+                            Check(VisibleBounds(cancel).Left - VisibleBounds(discard).Right > 24 * scale &&
+                                VisibleBounds(save).Left - VisibleBounds(cancel).Right <= 10 * scale,
+                                context + ": Material uses the shared left/right action spacing");
+                            Check(dialog.ClientSize.Height >= 190 * scale &&
+                                VisibleBounds(detail).Top - VisibleBounds(heading).Bottom >= 11 * scale &&
+                                VisibleBounds(save).Top - VisibleBounds(detail).Top - caption.Height >= 20 * scale,
+                                context + ": Material has room between the title, message and buttons");
+                        }
+                        else if (palette.Style == SoftwareStyle.Default)
                         {
                             Check(new[] { save, cancel, discard }.All(CaptureButtonPainter.HasBackdrop) &&
                                 Equals(cancel.Tag, "quiet") && Equals(discard.Tag, "quiet") &&
@@ -214,7 +247,8 @@ internal static class OwnedDialogRegression
 
     private static void CheckAppearance(Form dialog, Form owner, CapturePalette palette, string name)
     {
-        Check(dialog.Owner == owner && dialog.BackColor == palette.Background && dialog.ForeColor == palette.Text &&
+        Color surface = palette.IsMaterial && dialog.Name == "editorCloseConfirmation" ? palette.Surface : palette.Background;
+        Check(dialog.Owner == owner && dialog.BackColor == surface && dialog.ForeColor == palette.Text &&
             !dialog.Text.StartsWith("ShareX", StringComparison.Ordinal), $"{name} follows its owner at {dialog.DeviceDpi} DPI");
     }
 
@@ -231,8 +265,13 @@ internal static class OwnedDialogRegression
         if (dialog.DeviceDpi == 96) dialog.DrawToBitmap(image, new Rectangle(Point.Empty, dialog.Size));
         else
         {
+            // Render this HWND even when another top-level window covers the test dialog.
             using Graphics graphics = Graphics.FromImage(image);
-            graphics.CopyFromScreen(dialog.Location, Point.Empty, dialog.Size);
+            nint dc = graphics.GetHdc();
+            bool printed;
+            try { printed = NativeMethods.PrintWindow(dialog.Handle, dc, 2); } // PW_RENDERFULLCONTENT
+            finally { graphics.ReleaseHdc(dc); }
+            if (!printed) dialog.DrawToBitmap(image, new Rectangle(Point.Empty, dialog.Size));
         }
         image.Save(Path.Combine("artifacts/image-editor", name + ".png"), ImageFormat.Png);
     }

@@ -18,13 +18,40 @@ internal sealed class BackdropSnapshot
         Pixels = new uint[checked(size.Width * size.Height)];
     }
 
-    // Subtract this premultiplied matte from the opaque drawing to expose the native material.
     internal static uint RemovedMatte(CapturePalette palette)
     {
-        uint transmission = palette.Background.GetBrightness() < .5 ? 31u : 79u;
-        Color color = palette.Background;
-        return transmission << 24 | ((color.R * transmission + 127) / 255) << 16
-            | ((color.G * transmission + 127) / 255) << 8 | (color.B * transmission + 127) / 255;
+        bool dark = palette.Background.GetBrightness() < .5f;
+        uint transmission = palette.Style switch
+        {
+            SoftwareStyle.Default => dark ? 53u : 42u,
+            SoftwareStyle.WinUI => dark ? 40u : 33u,
+            _ => dark ? 31u : 22u
+        };
+        return CoveredMatte((uint)palette.Background.ToArgb(), transmission);
+    }
+
+    internal static uint RemovedMenuMatte(CapturePalette palette)
+    {
+        bool dark = palette.MenuSurface.GetBrightness() < .5f;
+        uint transmission = palette.Style switch
+        {
+            SoftwareStyle.Default => dark ? 55u : 42u,
+            SoftwareStyle.WinUI => dark ? 50u : 34u,
+            _ => dark ? 48u : 22u
+        };
+        return CoveredMatte((uint)palette.MenuSurface.ToArgb(), transmission);
+    }
+
+    internal static Color PreviewTint(CapturePalette palette)
+    {
+        bool dark = palette.Surface.GetBrightness() < .5f;
+        int transmission = palette.Style switch
+        {
+            SoftwareStyle.Default => dark ? 48 : 43,
+            SoftwareStyle.WinUI => dark ? 38 : 37,
+            _ => dark ? 33 : 30
+        };
+        return Color.FromArgb(255 - transmission, palette.Surface);
     }
 
     internal static uint CoveredMatte(uint matte, uint coverage) =>
@@ -150,8 +177,9 @@ internal sealed class BackdropSnapshot
     internal static uint RemoveMatte(uint color, uint matte)
     {
         uint red = (color >> 16) & 255, green = (color >> 8) & 255, blue = color & 255;
-        return (255 - (matte >> 24)) << 24 | (red - Math.Min(red, (matte >> 16) & 255)) << 16
-            | (green - Math.Min(green, (matte >> 8) & 255)) << 8 | (blue - Math.Min(blue, matte & 255));
+        uint alpha = 255 - (matte >> 24);
+        return alpha << 24 | Math.Min(alpha, red - Math.Min(red, (matte >> 16) & 255)) << 16
+            | Math.Min(alpha, green - Math.Min(green, (matte >> 8) & 255)) << 8 | Math.Min(alpha, blue - Math.Min(blue, matte & 255));
     }
 
     internal static void RemoveMatte(Span<uint> colors, ReadOnlySpan<uint> mattes)
@@ -166,8 +194,9 @@ internal sealed class BackdropSnapshot
                 red -= Vector.Min(red, Vector.ShiftRightLogical(matte, 16) & mask);
                 green -= Vector.Min(green, Vector.ShiftRightLogical(matte, 8) & mask);
                 blue -= Vector.Min(blue, matte & mask);
-                (Vector.ShiftLeft(mask - Vector.ShiftRightLogical(matte, 24), 24) | Vector.ShiftLeft(red, 16)
-                    | Vector.ShiftLeft(green, 8) | blue).CopyTo(colors.Slice(i));
+                Vector<uint> alpha = mask - Vector.ShiftRightLogical(matte, 24);
+                (Vector.ShiftLeft(alpha, 24) | Vector.ShiftLeft(Vector.Min(red, alpha), 16)
+                    | Vector.ShiftLeft(Vector.Min(green, alpha), 8) | Vector.Min(blue, alpha)).CopyTo(colors.Slice(i));
             }
         for (; i < colors.Length; i++) colors[i] = RemoveMatte(colors[i], mattes[i]);
     }

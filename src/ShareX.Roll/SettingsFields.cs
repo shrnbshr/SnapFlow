@@ -123,7 +123,8 @@ internal sealed class SettingsNumberField : Control
     {
         palette = value;
         BackColor = Parent?.BackColor ?? value.Surface;
-        ButtonPointerBounds.ApplyInset(this, value.IsClaude, 10);
+        ButtonPointerBounds.ApplyInset(this, value.HasShapedControls,
+            value.CornerRadius(value.IsWinUI ? CapturePalette.WinUIControlRadius : value.IsMaterial ? MaterialPalette.FieldRadius : 10));
         number.BackColor = value.Canvas;
         number.ForeColor = value.Text;
         foreach (Control child in number.Controls)
@@ -176,13 +177,13 @@ internal sealed class SettingsNumberField : Control
         using (SolidBrush background = new(Parent?.BackColor ?? palette.Surface)) g.FillRectangle(background, ClientRectangle);
         g.SmoothingMode = SmoothingMode.AntiAlias;
         RectangleF face = new(s, s, Width - 2 * s, Height - 2 * s);
-        float radius = 10 * s;
-        if (palette.IsClaude) CaptureDrawing.InsetAntialiasedFace(ref face, ref radius);
+        float radius = palette.CornerRadius(palette.IsWinUI ? CapturePalette.WinUIControlRadius : palette.IsMaterial ? MaterialPalette.FieldRadius : 10) * s;
+        if (palette.HasShapedControls) CaptureDrawing.InsetAntialiasedFace(ref face, ref radius);
         using GraphicsPath shape = CaptureDrawing.Rounded(face, radius);
         using SolidBrush fill = new(palette.Canvas);
         bool focused = number.ContainsFocus;
         g.FillPath(fill, shape);
-        if (palette.IsClaude)
+        if (palette.HasShapedControls)
             CaptureDrawing.DrawInsideBorder(g, face, radius, focused ? palette.Accent : palette.FieldBorder, (focused ? 1.5f : 1) * s);
         else if (focused || SystemInformation.HighContrast)
         {
@@ -192,6 +193,11 @@ internal sealed class SettingsNumberField : Control
         float x = Width - 15 * s;
         using Pen arrow = new(hovering || pressed != 0 ? palette.Text : palette.Secondary, 1.4f * s) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
         float top = Height / 2f - 5 * s, bottom = Height / 2f + 5 * s;
+        if (ThemeIcons.TryDraw(g, ThemeIcons.Centered(x, top, 11 * s), palette.Style, "chevronUp", arrow.Color))
+        {
+            ThemeIcons.TryDraw(g, ThemeIcons.Centered(x, bottom, 11 * s), palette.Style, "chevronDown", arrow.Color);
+            return;
+        }
         g.DrawLines(arrow, new PointF[] { new(x - 3 * s, top + 1.5f * s), new(x, top - 1.5f * s), new(x + 3 * s, top + 1.5f * s) });
         g.DrawLines(arrow, new PointF[] { new(x - 3 * s, bottom - 1.5f * s), new(x, bottom + 1.5f * s), new(x + 3 * s, bottom - 1.5f * s) });
     }
@@ -253,7 +259,8 @@ internal sealed class SettingsChoice : ComboBox
         this.transparencyEnabled = transparencyEnabled;
         BackColor = value.IsClaude && Parent?.BackColor == value.Background ? value.Surface : value.Canvas;
         ForeColor = value.Text;
-        ButtonPointerBounds.ApplyInset(this, value.IsClaude, 10);
+        ButtonPointerBounds.ApplyInset(this, value.HasShapedControls,
+            value.CornerRadius(value.IsWinUI ? CapturePalette.WinUIControlRadius : value.IsMaterial ? MaterialPalette.FieldRadius : 10));
         Invalidate();
     }
 
@@ -341,16 +348,16 @@ internal sealed class SettingsChoice : ComboBox
         using (SolidBrush background = new(Parent?.BackColor ?? palette.Surface)) g.FillRectangle(background, ClientRectangle);
         g.SmoothingMode = SmoothingMode.AntiAlias;
         RectangleF face = new(s, s, Width - 2 * s, Height - 2 * s);
-        float radius = 10 * s;
-        if (palette.IsClaude) CaptureDrawing.InsetAntialiasedFace(ref face, ref radius);
+        float radius = palette.CornerRadius(palette.IsWinUI ? CapturePalette.WinUIControlRadius : palette.IsMaterial ? MaterialPalette.FieldRadius : 10) * s;
+        if (palette.HasShapedControls) CaptureDrawing.InsetAntialiasedFace(ref face, ref radius);
         using GraphicsPath shape = CaptureDrawing.Rounded(face, radius);
         bool active = Focused || menu?.Visible == true;
-        Color field = palette.IsClaude
+        Color field = palette.IsMaterial ? menu?.Visible == true ? palette.Tint : hovering ? palette.Hover : palette.Canvas : palette.IsClaude
             ? CaptureDrawing.Blend(BackColor, palette.Hover, hovering && !active ? .4f : 0)
             : hovering ? palette.Hover : palette.Canvas;
         using SolidBrush fill = new(field);
         g.FillPath(fill, shape);
-        if (palette.IsClaude)
+        if (palette.HasShapedControls)
             CaptureDrawing.DrawInsideBorder(g, face, radius, active ? palette.Accent : palette.FieldBorder, (active ? 1.5f : 1) * s);
         else if (Focused && ShowFocusCues || menu?.Visible == true || SystemInformation.HighContrast)
         {
@@ -360,8 +367,9 @@ internal sealed class SettingsChoice : ComboBox
         TextRenderer.DrawText(g, Text, Font, new Rectangle((int)(ButtonSpacing.Horizontal * s), 0, Math.Max(0, Width - (int)((ButtonSpacing.Horizontal + 34) * s)), Height), Enabled ? palette.Text : palette.Secondary,
             TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.PreserveGraphicsClipping | TextFormatFlags.PreserveGraphicsTranslateTransform | UiLanguage.TextDirection);
         float x = Width - 15 * s, y = Height / 2f;
-        using Pen arrow = new(palette.IsClaude && active ? palette.Accent : palette.Secondary, 1.5f * s)
+        using Pen arrow = new(palette.HasShapedControls && active ? palette.Accent : palette.Secondary, 1.5f * s)
             { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
+        if (ThemeIcons.TryDraw(g, ThemeIcons.Centered(x, y, 13 * s), palette.Style, "chevronDown", arrow.Color)) return;
         g.DrawLines(arrow, new PointF[] { new(x - 3 * s, y - 1.5f * s), new(x, y + 1.5f * s), new(x + 3 * s, y - 1.5f * s) });
     }
 

@@ -107,9 +107,11 @@ internal static class OwnedDialogAppearance
 
     internal static DialogResult ConfirmClose(Form owner, CapturePalette palette, bool transparency)
     {
+        bool material = palette.IsMaterial;
+        if (material) palette = palette with { Background = palette.Surface };
         using Font font = new("Microsoft YaHei UI", 10);
-        using Font headingFont = new(font.FontFamily, 16, FontStyle.Bold);
-        using Font? settingsActionFont = palette.IsClaude ? null : new Font(font.FontFamily, 11);
+        using Font headingFont = material ? new Font(font.FontFamily, 18) : CaptureTypography.CreateHeading(font, 16, palette);
+        using Font? settingsActionFont = palette.HasShapedControls ? null : new Font(font.FontFamily, 11);
         using Form dialog = new();
         dialog.SuspendLayout();
         dialog.Name = "editorCloseConfirmation";
@@ -123,7 +125,7 @@ internal static class OwnedDialogAppearance
         TableLayoutPanel layout = new()
         {
             Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3,
-            Padding = new Padding(24, 20, 24, 16), Margin = Padding.Empty
+            Padding = new Padding(24, material ? 24 : 20, 24, 16), Margin = Padding.Empty
         };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -132,7 +134,7 @@ internal static class OwnedDialogAppearance
         layout.Controls.Add(new Label
         {
             Name = "confirmCloseHeading", Text = Strings.EditorCloseHeading, Font = headingFont,
-            AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0, 0, 0, 8)
+            AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0, 0, 0, material ? 12 : 8)
         }, 0, 0);
         Label detail = new DescriptionLabel
         {
@@ -158,11 +160,11 @@ internal static class OwnedDialogAppearance
             {
                 Name = "confirmClose" + result, Text = label, DialogResult = result,
                 Margin = column == 2 ? new Padding(0, 0, 8, 0) : Padding.Empty,
-                Size = new Size(width, palette.IsClaude ? 40 : ButtonSpacing.ActionHeight), TabIndex = tab
+                Size = new Size(width, palette.HasShapedControls ? 40 : ButtonSpacing.ActionHeight), TabIndex = tab
             };
             actions.Controls.Add(button, column, 0);
             bool primary = result == DialogResult.Yes;
-            if (palette.IsClaude)
+            if (palette.HasShapedControls)
             {
                 DialogChrome.StyleButton(button, palette, primary, quiet: result == DialogResult.No);
             }

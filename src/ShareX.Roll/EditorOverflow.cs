@@ -69,14 +69,6 @@ internal static class EditorOverflow
             popup.Items.Add(item);
         }
         popup.Renderer = new EditorToolStripRenderer(popup, palette);
-        popup.SizeChanged += (_, _) =>
-        {
-            if (popup.IsDisposed || popup.Width <= 0 || popup.Height <= 0) return;
-            using var outline = CaptureDrawing.Rounded(popup.ClientRectangle, S(10));
-            Region? previous = popup.Region;
-            popup.Region = new Region(outline);
-            previous?.Dispose();
-        };
         _ = new EditorMenuBackdrop(popup, palette, transparency);
         return popup;
     }
@@ -194,7 +186,6 @@ internal static class EditorOverflow
                 else StyleRows(menu);
             };
             menu.ItemAdded += (_, e) => Watch(e.Item);
-            menu.SizeChanged += (_, _) => Round(menu);
             menu.Closed += (_, _) => { if (ReferenceEquals(menu, overflow)) Restore(); };
             menu.Disposed += (_, _) =>
             {
@@ -214,19 +205,10 @@ internal static class EditorOverflow
             menu.Renderer = strip.Renderer;
             menu.ImageScalingSize = strip.ImageScalingSize;
             menu.Padding = new Padding(S(6));
+            menu.ShowItemToolTips = false;
             // The editor owns a soft shadow outside the rounded native menu region.
             menu.DropShadowEnabled = false;
             NameEditCommands(menu);
-            Round(menu);
-        }
-
-        private void Round(ToolStripDropDown menu)
-        {
-            if (menu.IsDisposed || menu.Width <= 0 || menu.Height <= 0) return;
-            using var outline = CaptureDrawing.Rounded(new RectangleF(0, 0, menu.Width, menu.Height), S(10));
-            Region? previous = menu.Region;
-            menu.Region = new Region(outline);
-            previous?.Dispose();
         }
 
         private int MenuWidth(ToolStripDropDown menu, IEnumerable<ToolStripItem> items)

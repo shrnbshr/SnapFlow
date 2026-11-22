@@ -1,4 +1,4 @@
-// GPL-3.0-or-later. DWM owns the Acrylic material; existing controls own layout, input and animation.
+// GPL-3.0-or-later. DWM owns the backdrop; existing controls own layout, input and animation.
 using Microsoft.Win32;
 using ShareX.HelpersLib;
 using System.Numerics;
@@ -14,6 +14,7 @@ internal interface IBackdropCachingScope { }
 
 internal sealed class WindowBackdrop : IDisposable
 {
+    private static readonly CompositionSetter? setComposition = FindCompositionSetter();
     private readonly Form form;
     private readonly Func<Rectangle>? opaqueBounds;
     private readonly Dictionary<Control, PaintWindow> windows = new();
@@ -78,16 +79,17 @@ internal sealed class WindowBackdrop : IDisposable
     {
         this.enabled = enabled;
         bool changed = palette != value;
+        bool micaChanged = palette.IsWinUI != value.IsWinUI;
         palette = value;
         if (disposed || !form.IsHandleCreated) return;
-        bool supported = IsSupported();
+        bool supported = !value.IsMetro && IsSupported();
         bool active = enabled && supported;
         // Keep the client redirection surface stable across app-level toggles.
         // The opaque mode still paints alpha=255; only the material and pixel coverage change.
-        if (active != IsActive || !applied || extended != supported)
+        if (active != IsActive || !applied || extended != supported || active && micaChanged)
         {
             changed = true;
-            int material = active ? 3 : 1; // DWMSBT_TRANSIENTWINDOW / DWMSBT_NONE.
+            int material = active ? (value.IsWinUI ? 2 : 3) : 1; // Mica, Acrylic, or none.
             MARGINS margins = supported ? new() { leftWidth = -1, rightWidth = -1, topHeight = -1, bottomHeight = -1 } : default;
             bool materialReady = NativeMethods.DwmSetWindowAttribute(form.Handle, 38, ref material, sizeof(int)) >= 0;
             bool frameReady = (applied && extended == supported) ||
@@ -109,6 +111,37 @@ internal sealed class WindowBackdrop : IDisposable
             form.Invalidate(true);
             if (form.Visible) RedrawWindow(form.Handle, 0, 0, 0x0100 | 0x0080);
         }
+    }
+
+    internal static void SetRedirectionAlpha(IntPtr window, bool enabled)
+    {
+        // Explicit redirection alpha is available on 24H2+. Native blur predates this attribute,
+        // so an older Windows version or a failed optional attribute must not block the material.
+        if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 26100)) return;
+        int value = enabled ? 1 : 0;
+        NativeMethods.DwmSetWindowAttribute(window, 39, ref value, sizeof(int));
+    }
+
+    private static CompositionSetter? FindCompositionSetter()
+    {
+        IntPtr module = GetModuleHandle("user32.dll");
+        IntPtr address = module == IntPtr.Zero ? IntPtr.Zero : GetProcAddress(module, "SetWindowCompositionAttribute");
+        return address == IntPtr.Zero ? null : Marshal.GetDelegateForFunctionPointer<CompositionSetter>(address);
+    }
+
+    internal static bool SetAccentBlur(IntPtr window, bool enabled)
+    {
+        if (setComposition == null) return !enabled;
+        // The compositor supplies blur; the premultiplied surface above supplies a readable theme tint.
+        AccentPolicy accent = new() { State = enabled ? 3 : 0 };
+        IntPtr memory = Marshal.AllocHGlobal(Marshal.SizeOf<AccentPolicy>());
+        try
+        {
+            Marshal.StructureToPtr(accent, memory, false);
+            CompositionData data = new() { Attribute = 19, Data = memory, Size = (nuint)Marshal.SizeOf<AccentPolicy>() };
+            return setComposition(window, ref data);
+        }
+        finally { Marshal.FreeHGlobal(memory); }
     }
 
     internal static bool IsSupported()
@@ -370,17 +403,7 @@ internal sealed class WindowBackdrop : IDisposable
                     }
                     i = output.Length;
                 }
-                Vector<uint> rgb = new(0xFFFFFF), opaque = new(0xFF000000), key = new(background);
-                if (material == null && i == 0 && Vector.IsHardwareAccelerated)
-                    for (; i <= output.Length - Vector<uint>.Count; i += Vector<uint>.Count)
-                    {
-                        Vector<uint> source = new(output.Slice(i));
-                        Vector<uint> value = source | opaque;
-                        if (glass) value = Vector.ConditionalSelect(Vector.Equals(source & rgb, key), new Vector<uint>(tint), value);
-                        value.CopyTo(output.Slice(i));
-                    }
-                for (; i < output.Length; i++)
-                    output[i] = glass && (output[i] & 0xFFFFFF) == background ? tint : output[i] | 0xFF000000;
+                if (i == 0) ConvertBackground(output, background, tint, glass);
                 Marshal.Copy(pixels, 0, bits, pixels.Length);
                 if (cacheLabel) { pixelsDirty = false; paintedPalette = owner.palette; paintedActive = owner.IsActive; }
                 BitBlt(dc, 0, 0, size.Width, size.Height, memoryDc, 0, 0, 0x00CC0020);
@@ -406,7 +429,10 @@ internal sealed class WindowBackdrop : IDisposable
                     value.CopyTo(pixels.Slice(i));
                 }
             for (; i < pixels.Length; i++)
-                pixels[i] = glass && (pixels[i] & 0xFFFFFF) == background ? tint : pixels[i] | 0xFF000000;
+            {
+                uint color = pixels[i] & 0xFFFFFF;
+                pixels[i] = glass && color == background ? tint : pixels[i] | 0xFF000000;
+            }
         }
 
         private bool EnsureSurface(Size value)
@@ -455,6 +481,14 @@ internal sealed class WindowBackdrop : IDisposable
     }
 
     [StructLayout(LayoutKind.Sequential)] private struct NativeRect { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] private struct AccentPolicy { public int State; public uint Flags, Gradient, Animation; }
+    [StructLayout(LayoutKind.Sequential)] private struct CompositionData { public int Attribute; public IntPtr Data; public nuint Size; }
+    [UnmanagedFunctionPointer(CallingConvention.Winapi, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private delegate bool CompositionSetter(IntPtr window, ref CompositionData data);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr GetModuleHandle(string module);
+    [DllImport("kernel32.dll", CharSet = CharSet.Ansi, ExactSpelling = true)] private static extern IntPtr GetProcAddress(IntPtr module, string name);
+
     [StructLayout(LayoutKind.Sequential)] private struct WindowPosition
     {
         public nint Window, InsertAfter;

@@ -12,6 +12,8 @@ public sealed partial class MainForm
     private TableLayoutPanel workspace = null!;
     private PreviewSurface previewFrame = null!;
     private CapturePalette appearancePalette = CapturePalette.Current;
+    private CapturePalette? materialFramePalette;
+    private bool squareFrame;
     private bool? frameUsesDarkMode;
     private WindowBackdrop? windowBackdrop;
     private bool? transparencyPreview;
@@ -34,6 +36,8 @@ public sealed partial class MainForm
         HandleCreated += (_, _) =>
         {
             frameUsesDarkMode = null;
+            materialFramePalette = null;
+            squareFrame = false;
             ApplyWindowFrameAppearance();
             ApplyWindowBackdrop();
         };
@@ -58,6 +62,16 @@ public sealed partial class MainForm
     }
 
     private void AppearancePreferenceChanged(object sender, UserPreferenceChangedEventArgs e)
+        => QueueAppearanceRefresh();
+
+    protected override void WndProc(ref Message message)
+    {
+        base.WndProc(ref message);
+        if (message.Msg == (int)WindowsMessages.DWMCOLORIZATIONCOLORCHANGED && appearancePalette?.IsMaterial == true)
+            QueueAppearanceRefresh();
+    }
+
+    private void QueueAppearanceRefresh()
     {
         if (!IsHandleCreated || IsDisposed || Disposing) return;
         try { BeginInvoke((Action)ApplyAppearance); }
@@ -80,6 +94,8 @@ public sealed partial class MainForm
         ApplyWindowFrameAppearance();
         BackColor = palette.Background;
         PaintContainers(workspace, palette, palette.Background);
+        if (palette.IsMaterial)
+            PaintContainers(workspace.Controls["previewToolbar"]!, palette, palette.Surface);
         CaptureTypography.ApplyDescription(status, Font, palette);
         previewFrame.Palette = palette;
         previewFrame.Invalidate();
@@ -88,7 +104,7 @@ public sealed partial class MainForm
         preview.ApplyViewportAppearance();
         foreach (CaptureModeButton button in modeButtons.Values.Append(edit).Append(copy).Append(save).Append(settingsButton))
             button.Palette = palette;
-        workspaceTips.Invalidate();
+        workspaceTips.RefreshAppearance();
         preview.Invalidate();
         if (scrollForm is { IsDisposed: false }) ApplyScrollingColors(scrollForm, palette);
         // The library theme walks all child controls. Restore the settings surfaces afterwards.
@@ -102,6 +118,17 @@ public sealed partial class MainForm
         bool dark = ColorHelpers.IsDarkColor(appearancePalette.Background);
         if (frameUsesDarkMode != dark && NativeMethods.UseImmersiveDarkMode(Handle, dark))
             frameUsesDarkMode = dark;
+        if (squareFrame != appearancePalette.IsMetro)
+        {
+            squareFrame = appearancePalette.IsMetro;
+            DialogChrome.ApplySquareCorners(Handle, squareFrame);
+        }
+        CapturePalette? caption = appearancePalette.IsMaterial || appearancePalette.IsMetro ? appearancePalette : null;
+        if (materialFramePalette != caption)
+        {
+            DialogChrome.ApplyCaptionColors(Handle, caption);
+            materialFramePalette = caption;
+        }
     }
 
     private static void PaintContainers(Control parent, CapturePalette palette, Color background)
@@ -111,16 +138,26 @@ public sealed partial class MainForm
         foreach (Control child in parent.Controls) PaintContainers(child, palette, background);
     }
 
-    private static void ApplyScrollingColors(Form form, CapturePalette palette)
+    private void ApplyScrollingFrame(Form form, CapturePalette palette)
+    {
+        if (!form.IsHandleCreated) return;
+        DialogChrome.ApplyCaptionColors(form.Handle, palette.UsesFilledActions ? palette : null);
+        DialogChrome.ApplySquareCorners(form.Handle, palette.IsMetro);
+    }
+
+    private void ApplyScrollingColors(Form form, CapturePalette palette)
     {
         ShareXResources.ApplyTheme(form);
         PaintContainers(form, palette, palette.Background);
+        if (form.Controls.Find("scrollingCaptureTitle", true).FirstOrDefault() is Label title)
+            CaptureTypography.ApplyHeading(title, form.Font, 16, palette);
         Control? output = form.Controls.Find("pOutput", true).FirstOrDefault();
         if (output != null) output.BackColor = palette.Canvas;
         if (output is Panel panel) panel.BorderStyle = System.Windows.Forms.BorderStyle.None;
         if (form.Controls.Find("pbOutput", true).FirstOrDefault() is PictureBox picture) picture.BackColor = palette.Canvas;
         foreach (string name in new[] { "btnCapture", "btnUpload", "btnCopy", "btnOptions", "btnHelp" })
             if (form.Controls.Find(name, true).FirstOrDefault() is Button button) palette.StyleButton(button, name == "btnCapture");
+        ApplyScrollingFrame(form, palette);
     }
 
     private void ApplyScrollingAppearance(ScrollingCaptureForm form)
@@ -152,7 +189,7 @@ public sealed partial class MainForm
         heading.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         heading.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         heading.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        Label title = new() { Text = L("Scroll"), Font = new Font("Microsoft YaHei UI", 16, FontStyle.Bold), AutoSize = true, Margin = Padding.Empty };
+        Label title = new() { Name = "scrollingCaptureTitle", Text = L("Scroll"), Font = CaptureTypography.CreateHeading(Font, 16, appearancePalette), AutoSize = true, Margin = Padding.Empty };
         heading.Controls.Add(title, 0, 0);
         dimensions.Dock = DockStyle.None;
         dimensions.Anchor = AnchorStyles.Right;
@@ -181,6 +218,7 @@ public sealed partial class MainForm
         root.Controls.Add(toolbar, 0, 1);
         root.Controls.Add(output, 0, 2);
         form.Controls.Add(root);
+        form.HandleCreated += (_, _) => ApplyScrollingFrame(form, appearancePalette);
         ApplyScrollingColors(form, appearancePalette);
         form.ResumeLayout(true);
     }

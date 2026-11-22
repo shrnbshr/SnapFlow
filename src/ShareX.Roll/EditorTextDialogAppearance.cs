@@ -19,6 +19,7 @@ internal static class EditorTextDialogAppearance
 
     internal static void Apply(TextDrawingInputBox dialog, CapturePalette palette, bool transparency)
     {
+        if (palette.IsMaterial) palette = palette with { Background = palette.Surface };
         bool dark = palette.Background.GetBrightness() < .5f;
         dialog.SuspendLayout();
         dialog.AutoScaleMode = AutoScaleMode.Dpi;
@@ -35,6 +36,7 @@ internal static class EditorTextDialogAppearance
         TextBox input = dialog.Input;
         Label tip = dialog.Tip;
         FlowLayoutPanel tools = dialog.FormattingBar;
+        if (palette.IsMaterial) tools.BackColor = tip.BackColor = palette.Background;
         DialogLayout root = new()
         {
             Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3,
@@ -90,7 +92,7 @@ internal static class EditorTextDialogAppearance
                     glyphs.Controls.Add(button);
                     button.Size = new Size(31, 30);
                     button.AccessibleName = dialog.ButtonHint(button);
-                    DialogChrome.StyleButton(button, palette);
+                    DialogChrome.StyleButton(button, palette, quiet: palette.IsMaterial);
                     break;
             }
         }
@@ -112,11 +114,13 @@ internal static class EditorTextDialogAppearance
             Color border = input.Focused ? palette.Accent : palette.Border;
             if (!input.Focused && input.BackColor != palette.Surface)
                 border = palette.FieldBorder.IsEmpty ? palette.Secondary : palette.FieldBorder;
+            float radius = palette.CornerRadius(palette.IsWinUI ? CapturePalette.WinUIControlRadius : palette.IsMaterial ? MaterialPalette.ControlRadius : 8) * scale;
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            using var path = CaptureDrawing.Rounded(surface.ClientRectangle, 8 * scale);
+            using var path = CaptureDrawing.Rounded(surface.ClientRectangle, radius);
             using SolidBrush fill = new(input.BackColor);
             e.Graphics.FillPath(fill, path);
-            CaptureDrawing.DrawInsideBorder(e.Graphics, surface.ClientRectangle, 8 * scale, border, scale);
+            CaptureDrawing.DrawInsideBorder(e.Graphics, surface.ClientRectangle, radius, border,
+                (palette.IsMaterial && input.Focused ? 1.5f : 1) * scale);
         };
         surface.Resize += (_, _) => surface.Invalidate();
         surface.Controls.Add(input);
@@ -137,9 +141,9 @@ internal static class EditorTextDialogAppearance
         Button cancel = dialog.CancelAction;
         enter.AccessibleName = tip.Text;
         tip.TextChanged += (_, _) => enter.AccessibleName = tip.Text;
-        DialogChrome.StyleButton(enter, palette);
+        DialogChrome.StyleButton(enter, palette, quiet: palette.IsMaterial);
         DialogChrome.StyleButton(confirm, palette, primary: true);
-        DialogChrome.StyleButton(cancel, palette);
+        DialogChrome.StyleButton(cancel, palette, quiet: palette.IsMaterial);
         enter.Size = new Size(31, 32);
         confirm.Size = cancel.Size = new Size(86, 32);
         enter.Margin = confirm.Margin = new Padding(0, 0, 6, 0);
@@ -159,7 +163,9 @@ internal static class EditorTextDialogAppearance
 
         foreach (ToolStripDropDown menu in dialog.FormattingMenus) DialogChrome.StyleMenu(menu, palette, dialog.Font);
         UiLanguage.ApplyTextDirection(dialog);
-        DialogChrome.ApplyFrame(dialog, palette, transparency);
+        // Material You has a solid client. Let the native multiline edit paint directly,
+        // including line backgrounds, selection and composition from the IME.
+        DialogChrome.ApplyFrame(dialog, palette, transparency, frameMaterialOnly: palette.IsMaterial);
         dialog.ResumeLayout(true);
     }
 
@@ -178,23 +184,34 @@ internal static class EditorTextDialogAppearance
         fonts.DropDownClosed += (_, _) => fonts.Invalidate();
         fonts.GotFocus += (_, _) => fonts.Invalidate();
         fonts.LostFocus += (_, _) => fonts.Invalidate();
+        bool hovering = false;
+        if (palette.IsWinUI)
+        {
+            fonts.MouseEnter += (_, _) => { hovering = true; fonts.Invalidate(); };
+            fonts.MouseLeave += (_, _) => { hovering = false; fonts.Invalidate(); };
+            fonts.EnabledChanged += (_, _) => { if (!fonts.Enabled) hovering = false; fonts.Invalidate(); };
+        }
         fonts.Paint += (_, e) =>
         {
             float s = fonts.DeviceDpi / 96f;
             Graphics g = e.Graphics;
             g.Clear(palette.Background);
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            using var path = CaptureDrawing.Rounded(fonts.ClientRectangle, 6 * s);
-            using SolidBrush fill = new(fonts.DroppedDown ? palette.Hover : palette.Surface);
+            float radius = palette.CornerRadius(palette.IsWinUI ? CapturePalette.WinUIControlRadius : palette.IsMaterial ? MaterialPalette.FieldRadius : 6) * s;
+            using var path = CaptureDrawing.Rounded(fonts.ClientRectangle, radius);
+            Color fillColor = fonts.DroppedDown ? palette.IsMaterial || palette.IsWinUI ? palette.Tint : palette.Hover :
+                palette.IsWinUI && hovering && fonts.Enabled ? palette.WinUIHoverFill(palette.Surface) : palette.Surface;
+            using SolidBrush fill = new(fillColor);
             g.FillPath(fill, path);
             Color edge = fonts.Focused ? palette.Accent : palette.FieldBorder.IsEmpty ? palette.Border : palette.FieldBorder;
-            CaptureDrawing.DrawInsideBorder(g, fonts.ClientRectangle, 6 * s, edge, s);
+            CaptureDrawing.DrawInsideBorder(g, fonts.ClientRectangle, radius, edge, (palette.IsMaterial && fonts.Focused ? 1.5f : 1) * s);
             int inset = (int)Math.Round(8 * s), arrow = (int)Math.Round(24 * s);
             bool rtl = fonts.RightToLeft == RightToLeft.Yes;
             Rectangle text = new(rtl ? arrow : inset, 0, Math.Max(0, fonts.Width - arrow - inset), fonts.Height);
             TextRenderer.DrawText(g, fonts.Text, fonts.Font, text, palette.Text, TextFormatFlags.SingleLine |
                 TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | UiLanguage.TextDirection);
             float x = rtl ? arrow / 2f : fonts.Width - arrow / 2f, y = fonts.Height / 2f;
+            if (ThemeIcons.TryDraw(g, ThemeIcons.Centered(x, y, 13 * s), palette.Style, "chevronDown", palette.Secondary)) return;
             using Pen chevron = new(palette.Secondary, 1.4f * s) { StartCap = LineCap.Round, EndCap = LineCap.Round };
             g.DrawLines(chevron, [new PointF(x - 3 * s, y - s), new(x, y + 2 * s), new(x + 3 * s, y - s)]);
         };
@@ -206,7 +223,8 @@ internal static class EditorTextDialogAppearance
             if (e.Index < 0 || e.Index >= fonts.Items.Count) return;
             Rectangle text = e.Bounds;
             text.Inflate(-3, 0);
-            TextRenderer.DrawText(e.Graphics, fonts.GetItemText(fonts.Items[e.Index]), fonts.Font, text, palette.Text,
+            TextRenderer.DrawText(e.Graphics, fonts.GetItemText(fonts.Items[e.Index]), fonts.Font, text,
+                palette.IsMaterial && selected ? palette.TintText : palette.Text,
                 TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis |
                 TextFormatFlags.NoPrefix | UiLanguage.TextDirection);
             if (selected) e.DrawFocusRectangle();

@@ -2,6 +2,7 @@
 using ShareX.HelpersLib;
 using ShareX.ScreenCaptureLib;
 using System.Drawing.Drawing2D;
+using System.Drawing.Text;
 using static ShareX.Roll.Localization.UiText;
 
 namespace ShareX.Roll;
@@ -80,7 +81,7 @@ internal static class EditorChrome
             g.SmoothingMode = SmoothingMode.AntiAlias;
             using SolidBrush fill = new(color);
             using Pen border = new(palette.Secondary, Math.Max(1, dpi));
-            using GraphicsPath path = CaptureDrawing.Rounded(new RectangleF(dpi, dpi, image.Width - 2 * dpi, image.Height - 2 * dpi), 3 * dpi);
+            using GraphicsPath path = CaptureDrawing.Rounded(new RectangleF(dpi, dpi, image.Width - 2 * dpi, image.Height - 2 * dpi), palette.CornerRadius(3) * dpi);
             g.FillPath(fill, path);
             g.DrawPath(border, path);
             return image;
@@ -153,12 +154,13 @@ internal static class EditorChrome
         void Style()
         {
             window.Size = new(editor.ClientSize.Width, S(148));
-            window.BackColor = header.BackColor = tools.BackColor = actions.BackColor = palette.Background;
-            title.BackColor = status.BackColor = palette.Background;
+            Color surface = palette.IsMaterial ? palette.Surface : palette.Background;
+            window.BackColor = header.BackColor = tools.BackColor = actions.BackColor = surface;
+            title.BackColor = status.BackColor = surface;
             window.ForeColor = title.ForeColor = tools.ForeColor = actions.ForeColor = palette.Text;
             status.ForeColor = palette.Secondary;
             Font? oldTitleFont = titleFont, oldStatusFont = statusFont;
-            title.Font = titleFont = new Font(editor.Font.FontFamily, 14, FontStyle.Bold);
+            title.Font = titleFont = CaptureTypography.CreateHeading(editor.Font, 14, palette);
             status.Font = statusFont = CaptureTypography.CreateDescription(editor.Font, 10, palette);
             oldTitleFont?.Dispose();
             oldStatusFont?.Dispose();
@@ -189,8 +191,10 @@ internal static class EditorChrome
                 }
                 strip.Renderer = new EditorToolStripRenderer(strip, palette);
                 EditorOverflow.Install(strip, strip == tools ? L("EditorMoreTools") : L("EditorActions"), palette, transparency);
-                if (palette.IsClaude) LimitToolbarPointerBounds(strip);
+                if (palette.HasShapedControls) LimitToolbarPointerBounds(strip, palette.Style);
             }
+            if (transparency)
+                EditorToolTips.Install(editor, palette, tools, actions);
             RefreshState();
             UiLanguage.ApplyTextDirection(window);
             LayoutChrome();
@@ -205,7 +209,7 @@ internal static class EditorChrome
         window.Disposed += (_, _) => { titleFont?.Dispose(); statusFont?.Dispose(); };
     }
 
-    private static void LimitToolbarPointerBounds(ToolStrip strip)
+    private static void LimitToolbarPointerBounds(ToolStrip strip, SoftwareStyle style)
     {
         Region? paintedRegion = null;
         void Update()
@@ -216,7 +220,7 @@ internal static class EditorChrome
             foreach (ToolStripItem item in strip.Items.Cast<ToolStripItem>().Append(strip.OverflowButton))
             {
                 if (!item.Visible || item.GetCurrentParent() != strip || item.Width <= 0 || item.Height <= 0) continue;
-                using GraphicsPath face = EditorToolStripRenderer.CreateFace(item.Size, strip.DeviceDpi / 96f, menu: false);
+                using GraphicsPath face = EditorToolStripRenderer.CreateFace(item.Size, strip.DeviceDpi / 96f, menu: false, style);
                 using Matrix position = new();
                 position.Translate(item.Bounds.X, item.Bounds.Y);
                 face.Transform(position);
@@ -252,7 +256,7 @@ internal sealed class EditorToolStripRenderer : ToolStripProfessionalRenderer
     {
         internal readonly UiTween Hover, Press, Selected;
         internal readonly EditorButtonShadow Elevation = new();
-        internal Feedback(ToolStrip strip, ToolStripItem item)
+        internal Feedback(ToolStrip strip, ToolStripItem item, bool winUI)
         {
             void Repaint() { if (!strip.IsDisposed) strip.Invalidate(item.Bounds); }
             Hover = new(strip, Repaint); Press = new(strip, Repaint); Selected = new(strip, Repaint);
@@ -262,6 +266,11 @@ internal sealed class EditorToolStripRenderer : ToolStripProfessionalRenderer
             item.MouseDown += (_, e) => { if (e.Button == MouseButtons.Left) Press.SnapTo(1); };
             item.MouseUp += (_, _) => Press.SpringTo(0, 130);
             item.EnabledChanged += (_, _) => { if (!item.Enabled) { Hover.SnapTo(0); Press.SnapTo(0); } };
+            if (winUI && item is ToolStripDropDownItem dropdown)
+            {
+                dropdown.DropDownOpened += (_, _) => Repaint();
+                dropdown.DropDownClosed += (_, _) => Press.SnapTo(0);
+            }
             if (item is ToolStripButton button) button.CheckedChanged += (_, _) => Selected.SpringTo(button.Checked ? 1 : 0, 150);
             item.Disposed += (_, _) => { Hover.Dispose(); Press.Dispose(); Selected.Dispose(); Elevation.Dispose(); };
             strip.Disposed += (_, _) => Elevation.Dispose();
@@ -281,11 +290,14 @@ internal sealed class EditorToolStripRenderer : ToolStripProfessionalRenderer
         });
         Application.AddMessageFilter(input);
         strip.Disposed += (_, _) => Application.RemoveMessageFilter(input);
-        foreach (ToolStripItem item in strip.Items) Track(item);
-        Track(strip.OverflowButton);
+        if (!strip.IsDropDown)
+        {
+            foreach (ToolStripItem item in strip.Items) Track(item);
+            Track(strip.OverflowButton);
+        }
         void Track(ToolStripItem item)
         {
-            states[item] = new(strip, item);
+            states[item] = new(strip, item, palette.IsWinUI);
             item.MouseEnter += (_, _) => keyboardNavigation = false;
             item.MouseDown += (_, _) => keyboardNavigation = false;
         }
@@ -308,7 +320,9 @@ internal sealed class EditorToolStripRenderer : ToolStripProfessionalRenderer
         strip.LostFocus += (_, _) => { foreach (Feedback state in states.Values) state.Press.SpringTo(0, 110); };
     }
     private Color Foreground(ToolStripItem item) => PaintingCoverage ? Color.Black : !item.Enabled ? palette.Secondary :
-        item.Name == "editorApply" ? palette.AccentText : palette.Text;
+        item.Name == "editorApply" ? palette.AccentText :
+        palette.IsMaterial && (item is ToolStripButton { Checked: true } or ToolStripMenuItem { Checked: true })
+            ? palette.TintText : palette.Text;
 
     private bool IsTextAction(ToolStripItem item) =>
         palette.IsClaude && item.GetCurrentParent()?.IsDropDown == false && item is ToolStripButton &&
@@ -316,13 +330,24 @@ internal sealed class EditorToolStripRenderer : ToolStripProfessionalRenderer
 
     private static bool IsHighlightedAction(ToolStripItem item) =>
         item.Name == "editorApply" || item is ToolStripButton { Checked: true };
-    protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e) =>
-        e.Graphics.Clear(PaintingCoverage ? Color.White : palette.Background);
+    private Color StripSurface(bool menu) => menu ? palette.MenuSurface : palette.IsMaterial ? palette.Surface : palette.Background;
+
+    protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e)
+    {
+        e.Graphics.Clear(PaintingCoverage ? Color.White : StripSurface(e.ToolStrip.IsDropDown));
+    }
+
     protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e)
     {
-        if (!e.ToolStrip.IsDropDown || !SystemInformation.HighContrast) return;
+        if (!e.ToolStrip.IsDropDown || !(SystemInformation.HighContrast || palette.UsesFilledActions)) return;
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
         float dpi = e.ToolStrip.DeviceDpi / 96f;
+        if (palette.UsesFilledActions)
+        {
+            CaptureDrawing.DrawInsideBorder(e.Graphics, e.ToolStrip.ClientRectangle, palette.MenuRadius * dpi,
+                PaintingCoverage ? Color.Black : palette.Border, dpi);
+            return;
+        }
         using GraphicsPath path = CaptureDrawing.Rounded(new RectangleF(.5f, .5f, e.ToolStrip.Width - 1, e.ToolStrip.Height - 1), 10 * dpi);
         using Pen border = new(palette.Border);
         e.Graphics.DrawPath(border, path);
@@ -336,6 +361,8 @@ internal sealed class EditorToolStripRenderer : ToolStripProfessionalRenderer
             Rectangle rect = EditorMenuLayout.AccessoryBounds(e.Item, menu.DeviceDpi);
             float dpi = menu.DeviceDpi / 96f, x = rect.X + rect.Width / 2f, y = rect.Y + rect.Height / 2f;
             float direction = e.Item.RightToLeft == RightToLeft.Yes ? -1 : 1;
+            if (ThemeIcons.TryDraw(e.Graphics, ThemeIcons.Centered(x, y, 14 * dpi), palette.Style,
+                direction < 0 ? "chevronLeft" : "chevronRight", e.ArrowColor)) return;
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
             using Pen pen = new(e.ArrowColor, 1.5f * dpi) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
             e.Graphics.DrawLines(pen, [new PointF(x - direction * 2 * dpi, y - 4 * dpi),
@@ -349,6 +376,8 @@ internal sealed class EditorToolStripRenderer : ToolStripProfessionalRenderer
         Background(e);
         float dpi = (e.ToolStrip?.DeviceDpi ?? 96) / 96f;
         float centerX = e.Item.Width / 2f, centerY = e.Item.Height / 2f;
+        if (ThemeIcons.TryDraw(e.Graphics, ThemeIcons.Centered(centerX, centerY, 23 * dpi), palette.Style,
+            "more", Foreground(e.Item))) return;
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
         using SolidBrush dots = new(Foreground(e.Item));
         for (int i = -1; i <= 1; i++) e.Graphics.FillEllipse(dots, centerX + i * 5 * dpi - 1.3f * dpi, centerY - 1.3f * dpi, 2.6f * dpi, 2.6f * dpi);
@@ -366,37 +395,77 @@ internal sealed class EditorToolStripRenderer : ToolStripProfessionalRenderer
         return new RectangleF(4 * scale, (size.Height - height) / 2, size.Width - 8 * scale, height);
     }
 
-    internal static GraphicsPath CreateFace(Size size, float scale, bool menu) =>
-        CaptureDrawing.Rounded(FaceBounds(size, scale, menu), (menu ? 7 : 10) * scale);
+    private static float FaceRadius(RectangleF face, float scale, bool menu, SoftwareStyle style) => style switch
+    {
+        SoftwareStyle.MetroClassic => 0,
+        SoftwareStyle.WinUI => CapturePalette.WinUIControlRadius * scale,
+        SoftwareStyle.MaterialYou => face.Height / 2,
+        _ => (menu ? 7 : 10) * scale
+    };
+
+    internal static GraphicsPath CreateFace(Size size, float scale, bool menu, SoftwareStyle style)
+    {
+        RectangleF face = FaceBounds(size, scale, menu);
+        return CaptureDrawing.Rounded(face, FaceRadius(face, scale, menu, style));
+    }
 
     private void Background(ToolStripItemRenderEventArgs e)
     {
         ToolStripItem item = e.Item;
-        Feedback? state = null;
-        if (e.ToolStrip?.IsDropDown != true) states.TryGetValue(item, out state);
-        float selected = state?.Selected.Value ?? (item is ToolStripButton { Checked: true } ? 1 : 0);
-        float hover = state?.Hover.Value ?? (item.Selected ? 1 : 0);
-        float press = state?.Press.Value ?? 0;
-        Color surface = palette.Background;
         bool menu = e.ToolStrip?.IsDropDown == true;
-        Color fill = Mix(surface, menu ? palette.Hover : ButtonElevation.Surface(palette), hover);
-        if (item.Enabled) fill = Mix(fill, palette.Tint, press);
-        // Selection and transient press share the workspace edit button's pressed tint and normal ink.
-        // Keep each theme's own pairing: light blue/dark ink, or dark blue/light ink.
-        fill = Mix(fill, palette.Tint, selected);
+        Feedback? state = null;
+        if (!menu) states.TryGetValue(item, out state);
+        bool checkedItem = item is ToolStripButton { Checked: true } ||
+            palette.UsesFilledActions && item is ToolStripMenuItem { Checked: true };
+        float selected = state?.Selected.Value ?? (checkedItem ? 1 : 0);
+        float hover = state?.Hover.Value ?? (item.Selected && item.Enabled ? 1 : 0);
+        float press = state?.Press.Value ?? 0;
+        if (palette.IsWinUI)
+        {
+            // ToolStrip can enter its selected/open state before sending the custom hover and press events.
+            hover = !item.Enabled ? 0 : item.Selected ? 1 : hover;
+            press = !item.Enabled ? 0 : item.Pressed ? 1 : press;
+        }
+        Color surface = StripSurface(menu);
+        Color fill;
+        if (palette.IsWinUI)
+        {
+            // Apply feedback on top of the selected fill so checked tools and menu rows can still highlight.
+            Color resting = Mix(surface, palette.Tint, selected);
+            fill = Mix(palette.WinUIHoverFill(resting, hover), palette.WinUIHoverFill(palette.Tint, .5f), press);
+        }
+        else
+        {
+            Color hoverColor = menu ? (palette.IsMaterial ? palette.Tint : palette.Hover) : ButtonElevation.Surface(palette);
+            fill = Mix(surface, hoverColor, hover);
+            if (item.Enabled) fill = Mix(fill, palette.Tint, press);
+            fill = Mix(fill, palette.Tint, selected);
+        }
         if (IsTextAction(item)) fill = surface;
-        else if (item.Name == "editorApply") fill = item.Enabled
-            ? Mix(palette.Accent, palette.AccentText, press * .12f) : palette.IsClaude ? palette.Tint : palette.Accent;
+        else if (item.Name == "editorApply")
+        {
+            fill = palette.UsesFilledActions
+                ? item.Enabled ? palette.PrimaryFill(hover, press) : palette.RaisedSurface
+                : item.Enabled ? Mix(palette.Accent, palette.AccentText, press * .12f) : palette.IsClaude ? palette.Tint : palette.Accent;
+        }
         if (PaintingCoverage) fill = item.Name == "editorApply" ? Color.Black : CaptureButtonPainter.Coverage((1 - hover) * (1 - selected) * (1 - press));
         float dpi = (e.ToolStrip?.DeviceDpi ?? 96) / 96f;
         RectangleF rect = FaceBounds(item.Size, dpi, menu);
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        if (!menu && PaintingShadows && state != null && !palette.IsClaude)
+        if (!menu && PaintingShadows && state != null && palette.Style == SoftwareStyle.Default)
             state.Elevation.Paint(e.Graphics, item.Size, rect, 10 * dpi, dpi, palette.Background.GetBrightness() < .5f,
                 item.Enabled ? hover * (1 - press) : 0);
-        using GraphicsPath path = CreateFace(item.Size, dpi, menu);
-        using SolidBrush brush = new(fill);
-        e.Graphics.FillPath(brush, path);
+        float radius = FaceRadius(rect, dpi, menu, palette.Style);
+        if (palette.IsMaterial || palette.IsWinUI) CaptureDrawing.InsetAntialiasedFace(ref rect, ref radius);
+        using GraphicsPath path = CaptureDrawing.Rounded(rect, radius);
+        using (SolidBrush brush = new(fill)) e.Graphics.FillPath(brush, path);
+        if (palette.IsWinUI && !menu && selected > 0)
+        {
+            RectangleF marker = new(rect.X + (rect.Width - 14 * dpi) / 2, rect.Bottom - 3 * dpi, 14 * dpi, 2 * dpi);
+            using var line = CaptureDrawing.Rounded(marker, dpi);
+            using SolidBrush accent = new(PaintingCoverage ? Color.Black : Mix(fill, palette.Accent, selected));
+            e.Graphics.FillPath(accent, line);
+        }
         if (menu && item is ToolStripMenuItem { Checked: true, Tag: Color })
             CheckMark(e.Graphics, item, EditorMenuLayout.AccessoryBounds(item, e.ToolStrip!.DeviceDpi), dpi);
         bool keyboardFocus = !menu && keyboardNavigation && item.Selected && e.ToolStrip is { ContainsFocus: true, IsHandleCreated: true } strip &&
@@ -404,7 +473,10 @@ internal sealed class EditorToolStripRenderer : ToolStripProfessionalRenderer
         if (SystemInformation.HighContrast || keyboardFocus)
         {
             using Pen pen = new(PaintingCoverage ? Color.Black : keyboardFocus ? palette.Accent : palette.Border);
-            if (palette.IsClaude) CaptureDrawing.DrawInsideBorder(e.Graphics, rect, (menu ? 7 : 10) * dpi, pen.Color, dpi);
+            if (palette.HasShapedControls)
+                CaptureDrawing.DrawInsideBorder(e.Graphics, rect, radius,
+                    palette.UsesFilledActions && item.Name == "editorApply" ? palette.AccentText : pen.Color,
+                    (palette.IsMaterial ? 1.5f : 1) * dpi);
             else e.Graphics.DrawPath(pen, path);
         }
     }
@@ -412,6 +484,10 @@ internal sealed class EditorToolStripRenderer : ToolStripProfessionalRenderer
     {
         e.TextColor = Foreground(e.Item);
         e.TextFormat |= UiLanguage.TextDirection;
+        // The glyph's background can change after rasterization. Grayscale edges
+        // avoid the colored ClearType fringes left by compositing over that background.
+        if (palette.SupportsBackdrop || palette.IsClaude && e.Item.GetCurrentParent()?.IsDropDown == true)
+            e.Graphics.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
         if (e.Item.Enabled && IsTextAction(e.Item) && e.TextFont != null)
         {
             float scale = (e.Item.GetCurrentParent()?.DeviceDpi ?? 96) / 96f;
@@ -474,6 +550,7 @@ internal sealed class EditorToolStripRenderer : ToolStripProfessionalRenderer
     private void CheckMark(Graphics graphics, ToolStripItem item, Rectangle rect, float dpi)
     {
         float x = rect.X + rect.Width / 2f, y = rect.Y + rect.Height / 2f;
+        if (ThemeIcons.TryDraw(graphics, ThemeIcons.Centered(x, y, 16 * dpi), palette.Style, "ok", Foreground(item))) return;
         graphics.SmoothingMode = SmoothingMode.AntiAlias;
         using Pen pen = new(Foreground(item), 1.6f * dpi) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
         graphics.DrawLines(pen, [new PointF(x - 5 * dpi, y), new(x - 1 * dpi, y + 4 * dpi), new(x + 6 * dpi, y - 4 * dpi)]);
@@ -497,7 +574,7 @@ internal sealed class EditorToolStripRenderer : ToolStripProfessionalRenderer
             if (palette.IsClaude && !PaintingCoverage && e.Item.Enabled && e.Item.GetCurrentParent()?.IsDropDown == false &&
                 states.TryGetValue(e.Item, out Feedback? state))
                 ink = CaptureDrawing.Blend(ink, palette.Accent, Math.Max(state.Selected.Value, state.Hover.Value));
-            EditorIcons.Draw(e.Graphics, imageBounds, e.Item.Tag as ShapeType?, e.Item.Name ?? "", ink);
+            EditorIcons.Draw(e.Graphics, imageBounds, e.Item.Tag as ShapeType?, e.Item.Name ?? "", ink, palette.Style);
         }
         else if (PaintingCoverage) e.Graphics.FillRectangle(Brushes.Black, imageBounds);
         else base.OnRenderItemImage(new ToolStripItemImageRenderEventArgs(e.Graphics, e.Item, e.Image, imageBounds)); // Preserve native swatch/disabled-image behavior.

@@ -18,6 +18,9 @@ internal static class CaptureTypography
     private static readonly Lazy<string?> latin = new(() => InstalledFamily("Lora", "Georgia", "Cambria", "Times New Roman"));
     private static readonly Lazy<string?> chinese = new(() => InstalledFamily("Source Han Serif SC", "Noto Serif CJK SC", "Noto Serif SC", "SimSun"));
     private static readonly Lazy<string?> traditional = new(() => InstalledFamily("Source Han Serif HC", "Noto Serif CJK HK", "Noto Serif HK", "PMingLiU", "SimSun"));
+    private static readonly Lazy<string?> metroLatin = new(() => InstalledFamily("Segoe UI Light", "Segoe UI"));
+    private static readonly Lazy<string?> metroChinese = new(() => InstalledFamily("Microsoft YaHei UI Light", "Microsoft YaHei UI"));
+    private static readonly Lazy<string?> metroTraditional = new(() => InstalledFamily("Microsoft JhengHei UI Light", "Microsoft JhengHei UI"));
 
     private static string? InstalledFamily(params string[] names)
     {
@@ -48,22 +51,46 @@ internal static class CaptureTypography
     internal static Font CreateDescription(Font interfaceFont, float size, CapturePalette palette) =>
         new(FamilyForDescription(interfaceFont, palette), size);
 
+    private static string DisplayFamily(Font interfaceFont) => (UiLanguage.Culture.Name switch
+    {
+        "zh-CN" => metroChinese,
+        "zh-HK" => metroTraditional,
+        _ => metroLatin
+    }).Value ?? interfaceFont.Name;
+
+    internal static Font CreateHeading(Font interfaceFont, float size, CapturePalette palette) =>
+        palette.IsMetro ? new Font(DisplayFamily(interfaceFont), size + 3) : new Font(interfaceFont.FontFamily, size, FontStyle.Bold);
+
+    internal static void ApplyHeading(Control heading, Font interfaceFont, float size, CapturePalette palette)
+    {
+        string family = palette.IsMetro ? DisplayFamily(interfaceFont) : interfaceFont.Name;
+        float points = palette.IsMetro ? size + 3 : size;
+        FontStyle weight = palette.IsMetro ? FontStyle.Regular : FontStyle.Bold;
+        Font current = heading.Font;
+        if (current.Name == family && current.SizeInPoints == points && current.Style == weight) return;
+        AssignFont(heading, new Font(family, points, weight));
+    }
+
     internal static void ApplyDescription(Control description, Font interfaceFont, CapturePalette palette)
     {
         string family = FamilyForDescription(interfaceFont, palette);
         Font current = description.Font;
         if (string.Equals(current.Name, family, StringComparison.OrdinalIgnoreCase)) return;
 
-        // WinForms can replace and dispose a control's font during DPI scaling.
-        // Match its current size and keep only a reference for disposal.
-        DescriptionFont tracked = descriptions.GetValue(description, control =>
+        AssignFont(description, new Font(family, current.SizeInPoints));
+    }
+
+    private static void AssignFont(Control control, Font value)
+    {
+        // WinForms can replace a control's current font during DPI scaling. Track only fonts we create.
+        DescriptionFont tracked = descriptions.GetValue(control, owner =>
         {
             DescriptionFont font = new();
-            control.Disposed += (_, _) => font.Assigned?.Dispose();
+            owner.Disposed += (_, _) => font.Assigned?.Dispose();
             return font;
         });
         Font? previous = tracked.Assigned;
-        description.Font = tracked.Assigned = new Font(family, current.SizeInPoints);
+        control.Font = tracked.Assigned = value;
         previous?.Dispose();
     }
 }

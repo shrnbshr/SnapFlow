@@ -81,9 +81,10 @@ internal static class EditorOptionFields
         {
             scaleDpi = dpi;
             Font = content.Font = host.Font;
-            content.BackColor = BackColor = label.BackColor = palette.Background;
+            Color surface = palette.MenuSurface;
+            content.BackColor = BackColor = label.BackColor = surface;
             label.ForeColor = palette.Text;
-            if (suffix != null) { suffix.BackColor = palette.Background; suffix.ForeColor = palette.Secondary; }
+            if (suffix != null) { suffix.BackColor = surface; suffix.ForeColor = palette.Secondary; }
             if (field is SettingsNumberField number) number.ApplyPalette(palette);
             else ((EditorOptionChoice)field).ApplyPalette(palette);
             int labelWidth = TextRenderer.MeasureText(label.Text, Font, Size.Empty, TextFormatFlags.NoPadding).Width;
@@ -155,9 +156,10 @@ internal sealed class EditorOptionChoice : Button
     internal void ApplyPalette(CapturePalette value)
     {
         palette = value;
-        BackColor = value.Background;
+        BackColor = Parent?.BackColor ?? value.MenuSurface;
         ForeColor = value.Text;
-        ButtonPointerBounds.ApplyInset(this, value.IsClaude, 10);
+        ButtonPointerBounds.ApplyInset(this, value.HasShapedControls,
+            value.CornerRadius(value.IsWinUI ? CapturePalette.WinUIControlRadius : value.IsMaterial ? MaterialPalette.FieldRadius : 10));
         Invalidate();
     }
 
@@ -165,15 +167,21 @@ internal sealed class EditorOptionChoice : Button
     {
         float s = DeviceDpi / 96f;
         Graphics g = e.Graphics;
-        g.Clear(palette.Background);
+        g.Clear(BackColor);
         g.SmoothingMode = SmoothingMode.AntiAlias;
         RectangleF face = new(s, s, Width - 2 * s, Height - 2 * s);
-        using GraphicsPath path = CaptureDrawing.Rounded(face, 10 * s);
-        using SolidBrush fill = new(hovering ? palette.Hover : palette.Canvas);
+        float radius = palette.CornerRadius(palette.IsWinUI ? CapturePalette.WinUIControlRadius : palette.IsMaterial ? MaterialPalette.FieldRadius : 10) * s;
+        if (palette.IsMaterial || palette.IsWinUI) CaptureDrawing.InsetAntialiasedFace(ref face, ref radius);
+        using GraphicsPath path = CaptureDrawing.Rounded(face, radius);
+        bool open = menu?.Visible == true;
+        Color field = open && (palette.IsMaterial || palette.IsWinUI) ? palette.Tint :
+            hovering && palette.IsWinUI && Enabled ? palette.WinUIHoverFill(palette.Canvas) :
+            hovering && !palette.IsWinUI ? palette.Hover : palette.Canvas;
+        using SolidBrush fill = new(field);
         g.FillPath(fill, path);
-        bool active = Focused && ShowFocusCues || menu?.Visible == true;
-        if (palette.IsClaude)
-            CaptureDrawing.DrawInsideBorder(g, face, 10 * s, active ? palette.Accent : palette.FieldBorder, (active ? 1.5f : 1) * s);
+        bool active = Focused && ShowFocusCues || open;
+        if (palette.HasShapedControls)
+            CaptureDrawing.DrawInsideBorder(g, face, radius, active ? palette.Accent : palette.FieldBorder, (active ? 1.5f : 1) * s);
         else if (active || SystemInformation.HighContrast)
         {
             using Pen border = new(palette.Accent, 1.5f * s);
@@ -183,6 +191,7 @@ internal sealed class EditorOptionChoice : Button
             Enabled ? palette.Text : palette.Secondary, TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
             TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | UiLanguage.TextDirection);
         float x = Width - 15 * s, y = Height / 2f;
+        if (ThemeIcons.TryDraw(g, ThemeIcons.Centered(x, y, 13 * s), palette.Style, "chevronDown", palette.Secondary)) return;
         using Pen arrow = new(palette.Secondary, 1.5f * s) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
         g.DrawLines(arrow, [new PointF(x - 3 * s, y - 1.5f * s), new(x, y + 1.5f * s), new(x + 3 * s, y - 1.5f * s)]);
     }

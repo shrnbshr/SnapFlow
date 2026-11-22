@@ -1,10 +1,13 @@
 using ShareX.HelpersLib;
 using ShareX.Roll;
 using ShareX.ScreenCaptureLib;
+using System.Diagnostics;
+using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text;
 
 internal static class EditorBackdropRegression
 {
@@ -14,6 +17,15 @@ internal static class EditorBackdropRegression
     [DllImport("user32.dll")] private static extern bool SetWindowPos(nint window, nint after, int x, int y, int width, int height, uint flags);
     [DllImport("user32.dll")] private static extern nint WindowFromPoint(Point point);
     [DllImport("user32.dll")] private static extern nint GetAncestor(nint window, uint flags);
+    [DllImport("user32.dll")] private static extern nint SetThreadDpiAwarenessContext(nint context);
+    [DllImport("user32.dll")] private static extern nint SendMessage(nint window, int message, nint wParam, nint lParam);
+    [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
+    private delegate bool WindowCallback(nint window, nint data);
+    [DllImport("user32.dll")] private static extern bool EnumThreadWindows(uint thread, WindowCallback callback, nint data);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(nint window);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassName(nint window, StringBuilder name, int capacity);
+    [DllImport("user32.dll")] private static extern bool GetWindowRect(nint window, out NativeBounds bounds);
+    [StructLayout(LayoutKind.Sequential)] private struct NativeBounds { public int Left, Top, Right, Bottom; }
     private static int checks;
     private static void Check(bool value, string message)
     {
@@ -48,6 +60,180 @@ internal static class EditorBackdropRegression
         return frame.GetPixel(pixel.X - origin.X, pixel.Y - origin.Y);
     }
     private static int Distance(Color a, Color b) => Math.Max(Math.Abs(a.R - b.R), Math.Max(Math.Abs(a.G - b.G), Math.Abs(a.B - b.B)));
+
+    private static Bitmap CaptureDesktop(Rectangle bounds)
+    {
+        nint previous = SetThreadDpiAwarenessContext(-4);
+        try
+        {
+            DwmFlush();
+            return new Screenshot { RemoveOutsideScreenArea = false }.CaptureRectangle(bounds);
+        }
+        finally { if (previous != 0) SetThreadDpiAwarenessContext(previous); }
+    }
+
+    private static double Contrast(Color first, Color second)
+    {
+        static double Linear(byte channel)
+        {
+            double value = channel / 255d;
+            return value <= .04045 ? value / 12.92 : Math.Pow((value + .055) / 1.055, 2.4);
+        }
+        static double Light(Color color) => .05 + .2126 * Linear(color.R) + .7152 * Linear(color.G) + .0722 * Linear(color.B);
+        double a = Light(first), b = Light(second);
+        return Math.Max(a, b) / Math.Min(a, b);
+    }
+
+    internal static async Task RunMaterialsAsync(MainForm main)
+    {
+        string output = Path.GetFullPath("artifacts/editor-materials/" + main.DeviceDpi);
+        Directory.CreateDirectory(output);
+        VerifyMaterialContrast();
+
+        bool motion = UiMotion.UserEnabled;
+        Point cursor = Cursor.Position;
+        using BackgroundWindow background = new()
+        {
+            FormBorderStyle = FormBorderStyle.None, ShowInTaskbar = false, BackColor = Color.Black,
+            StartPosition = FormStartPosition.Manual, Bounds = Screen.FromControl(main).WorkingArea, TopMost = true
+        };
+        background.Show();
+        try
+        {
+            UiMotion.UserEnabled = true;
+            foreach ((CapturePalette palette, bool transparent) in new[]
+            {
+                (CapturePalette.Light, true), (CapturePalette.Dark, true),
+                (CapturePalette.WinUILight, true), (CapturePalette.WinUIDark, true)
+            })
+            {
+                palette.ApplyLibraryTheme();
+                using Bitmap image = new(600, 360);
+                using (Graphics graphics = Graphics.FromImage(image)) graphics.Clear(Color.DarkSlateGray);
+                using RegionCaptureForm editor = ScreenshotEditor.Create(image, palette, new() { TransparencyEnabled = transparent });
+                editor.TopMost = true;
+                editor.Show(main);
+                editor.ForceActivate();
+                ToolStrip tools = EditorRegression.Tools(editor);
+                tools.Items["editorCancelCrop"]!.PerformClick();
+                tools.PerformLayout();
+                await Task.Delay(200);
+                background.BackColor = Color.Black;
+                background.Refresh();
+                Check(SetWindowPos(background.Handle, editor.Handle, 0, 0, 0, 0, 0x213), "controlled black backdrop is behind the editor");
+                string variant = $"{palette.Style}-{(palette.Background.GetBrightness() < .5f ? "dark" : "light")}-{transparent}";
+                await VerifyMenuAsync(editor, tools, background, palette, transparent, output, variant);
+                typeof(RegionCaptureForm).GetMethod("CloseWindow", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(editor, [RegionResult.Close]);
+            }
+        }
+        finally
+        {
+            Cursor.Position = cursor;
+            UiMotion.UserEnabled = motion;
+            CapturePalette.Current.ApplyLibraryTheme();
+        }
+    }
+
+    private static void VerifyMaterialContrast()
+    {
+        foreach (bool dark in new[] { false, true })
+        {
+            (CapturePalette Palette, uint Window, uint Menu, uint Preview, int PreviousSecondary)[] styles = dark
+                ? [(CapturePalette.WinUIDark, 31, 48, 33, 0xCDCDCD), (CapturePalette.Dark, 31, 48, 33, 0xB3B3BC)]
+                : [(CapturePalette.WinUILight, 22, 22, 30, 0x545454), (CapturePalette.Light, 22, 22, 30, 0x62626A)];
+            uint lastWindow = 0, lastMenu = 0, lastPreview = 0;
+            Color backdrop = dark ? Color.White : Color.Black;
+            foreach (var style in styles)
+            {
+                CapturePalette palette = style.Palette;
+                uint window = BackdropSnapshot.RemovedMatte(palette) >> 24;
+                uint menu = BackdropSnapshot.RemovedMenuMatte(palette) >> 24;
+                uint preview = (uint)(255 - BackdropSnapshot.PreviewTint(palette).A);
+                Check(window > Math.Max(style.Window, lastWindow) && menu > Math.Max(style.Menu, lastMenu) &&
+                      preview > Math.Max(style.Preview, lastPreview),
+                    $"{palette.Style}: {(dark ? "dark" : "light")} material transmits more than before and stays distinct");
+                lastWindow = window;
+                lastMenu = menu;
+                lastPreview = preview;
+                Color previousSecondary = Color.FromArgb(style.PreviousSecondary | unchecked((int)0xFF000000));
+                foreach ((Color surface, uint current, uint previous, string name) in new[]
+                {
+                    (palette.Background, window, style.Window, "window"),
+                    (palette.MenuSurface, menu, style.Menu, "menu"),
+                    (palette.Surface, preview, style.Preview, "zoom toolbar")
+                })
+                {
+                    Color composited = CaptureDrawing.Blend(surface, backdrop, current / 255f);
+                    Color old = CaptureDrawing.Blend(surface, backdrop, previous / 255f);
+                    double secondary = Contrast(palette.Secondary, composited);
+                    Check(secondary >= Math.Max(4.5, Contrast(previousSecondary, old)) &&
+                        Contrast(palette.Text, composited) >= 5.5 && Contrast(palette.LinkInk, composited) >= 4.5,
+                        $"{palette.Style}: {name} secondary contrast is {secondary:F2}:1 against the worst-case backdrop");
+                }
+            }
+        }
+    }
+
+    private static async Task VerifyMenuAsync(Form editor, ToolStrip tools, Form background, CapturePalette palette,
+        bool transparent, string output, string variant)
+    {
+        ToolStripOverflowButton more = tools.OverflowButton;
+        more.ShowDropDown();
+        ToolStripDropDown overflow = more.DropDown;
+        ToolStripDropDownItem edit = (ToolStripDropDownItem)tools.Items["editorEditMenu"]!;
+        edit.ShowDropDown();
+        ToolStripDropDown submenu = edit.DropDown;
+        await Task.Delay(175);
+        Check(overflow.Visible && submenu.Visible, variant + ": overflow opens the native edit submenu");
+        ToolStripItem undo = submenu.Items["editorUndo"]!, paste = submenu.Items["editorPaste"]!;
+        undo.Enabled = false;
+        paste.Enabled = true;
+        submenu.Refresh();
+        Rectangle bounds = PhysicalBounds(submenu);
+        using Bitmap frame = CaptureDesktop(bounds);
+        frame.Save(Path.Combine(output, variant + "-submenu.png"));
+        foreach (ToolStripItem item in new[] { undo, paste })
+        {
+            int dpi = submenu.DeviceDpi;
+            Color ink = item.Enabled ? palette.Text : palette.Secondary;
+            Point Local(Point point) => PhysicalPoint(submenu, point) - (Size)bounds.Location;
+            Point sample = Local(new Point(item.Bounds.Left + Math.Max(3, 5 * dpi / 96), item.Bounds.Top + item.Height / 2));
+            Color surface = frame.GetPixel(sample.X, sample.Y);
+            foreach (bool shortcut in new[] { false, true })
+            {
+                Rectangle text = EditorMenuLayout.TextBounds(item, item.Font, dpi, shortcut);
+                text.Offset(item.Bounds.Location);
+                Point start = Local(text.Location), end = Local(new Point(text.Right, text.Bottom));
+                Color closest = surface;
+                for (int y = start.Y; y < end.Y; y++)
+                for (int x = start.X; x < end.X; x++)
+                {
+                    Color pixel = frame.GetPixel(x, y);
+                    if (Distance(pixel, ink) < Distance(closest, ink)) closest = pixel;
+                }
+                Check(Distance(closest, ink) <= 4 && Contrast(closest, surface) >= 4.5,
+                    $"{variant}: {item.Name} {(shortcut ? "shortcut" : "label")} contrast is {Contrast(closest, surface):F2}:1 over a dark backdrop");
+            }
+        }
+        if (transparent && WindowBackdrop.IsSupported())
+        {
+            // The menu must still respond to what is behind it after strengthening the tint.
+            Rectangle area = Rectangle.Union(PhysicalBounds(editor), Rectangle.Union(PhysicalBounds(overflow), bounds));
+            using Bitmap context = CaptureDesktop(area);
+            context.Save(Path.Combine(output, variant + "-editor-and-popups.png"));
+            background.BackColor = Color.White;
+            background.Refresh();
+            await Task.Delay(250);
+            using Bitmap bright = CaptureDesktop(bounds);
+            int difference = 0;
+            for (int y = bounds.Height / 4; y < bounds.Height * 3 / 4; y += 5)
+            for (int x = bounds.Width / 4; x < bounds.Width * 3 / 4; x += 5)
+                difference = Math.Max(difference, Distance(bright.GetPixel(x, y), frame.GetPixel(x, y)));
+            Check(difference >= 2, $"{variant}: the clipped menu remains translucent (background response {difference})");
+        }
+        submenu.Close();
+        overflow.Close();
+    }
 
     internal static async Task RunAsync(MainForm main)
     {

@@ -26,6 +26,128 @@ internal static class EditorChromeRegression
         if (!condition) { Console.WriteLine("FAIL: " + message); throw new InvalidOperationException(message); }
         Console.WriteLine("PASS: " + message);
     }
+
+    private sealed class TestDropDown : ToolStripDropDownButton
+    {
+        internal bool Open { get; set; }
+        public override bool Pressed => Open || base.Pressed;
+    }
+
+    internal static void VerifyWinUIHover()
+    {
+        const BindingFlags instancePrivate = BindingFlags.Instance | BindingFlags.NonPublic;
+        bool motion = UiMotion.UserEnabled;
+        UiMotion.UserEnabled = false;
+        try
+        {
+            foreach (CapturePalette palette in new[] { CapturePalette.WinUILight, CapturePalette.WinUIDark })
+            {
+                using ToolStrip strip = new() { AutoSize = false, Size = new Size(800, 100) };
+                using TestDropDown options = new() { Text = "Options" };
+                using ToolStripButton checkedTool = new("Tool") { Checked = true };
+                using ToolStripButton command = new("Copy");
+                strip.Items.AddRange([options, checkedTool, command]);
+                _ = strip.Handle;
+                var renderer = new EditorToolStripRenderer(strip, palette);
+                strip.Renderer = renderer;
+                IDictionary states = (IDictionary)typeof(EditorToolStripRenderer).GetField("states", instancePrivate)!.GetValue(renderer)!;
+                foreach (ToolStripItem item in strip.Items.Cast<ToolStripItem>().Append(strip.OverflowButton))
+                {
+                    item.AutoSize = false;
+                    item.Size = new Size(96, 76);
+                    Color Paint(bool coverage = false)
+                    {
+                        using Bitmap bitmap = new(item.Width, item.Height);
+                        using Graphics g = Graphics.FromImage(bitmap);
+                        g.Clear(coverage ? Color.White : palette.Background);
+                        renderer.PaintingCoverage = coverage;
+                        try
+                        {
+                            ToolStripItemRenderEventArgs args = new(g, item);
+                            if (item == strip.OverflowButton) renderer.DrawOverflowButtonBackground(args);
+                            else if (item is ToolStripDropDownButton) renderer.DrawDropDownButtonBackground(args);
+                            else renderer.DrawButtonBackground(args);
+                        }
+                        finally { renderer.PaintingCoverage = false; }
+                        return bitmap.GetPixel(item.Width / 4, item.Height / 2);
+                    }
+                    object feedback = states[item]!;
+                    UiTween hover = (UiTween)feedback.GetType().GetField("Hover", instancePrivate)!.GetValue(feedback)!;
+                    Color resting = Paint();
+                    hover.SnapTo(1);
+                    Color hovered = Paint();
+                    int coverage = Paint(coverage: true).R;
+                    Check(Math.Abs(hovered.R - resting.R) >= 12 && coverage == 0,
+                        $"{item.GetType().Name} hover changes the face and coverage ({resting.R} → {hovered.R}, coverage {coverage})");
+                    hover.SnapTo(0);
+                    Check(Paint().ToArgb() == resting.ToArgb(), "leaving clears the toolbar hover");
+                    if (item == options)
+                    {
+                        options.Open = true;
+                        Check(Paint().ToArgb() != resting.ToArgb(), "the toolbar shows an open dropdown without a hover tween");
+                        options.Open = false;
+                        options.Select();
+                        Check(options.Selected && Paint().ToArgb() == hovered.ToArgb(),
+                            "native dropdown selection shows feedback before a tween advances");
+                        options.Enabled = false;
+                        Check(Paint().ToArgb() == resting.ToArgb(), "disabled dropdowns remain visually idle");
+                    }
+                }
+
+                using ToolStripDropDownMenu menu = new();
+                ToolStripMenuItem row = new("Choice") { Checked = true, AutoSize = false, Size = new Size(160, 56) };
+                menu.Items.Add(row);
+                _ = menu.Handle;
+                DialogChrome.StyleMenu(menu, palette, menu.Font);
+                Color MenuFill(ToolStripRenderer painter)
+                {
+                    using Bitmap bitmap = new(row.Width, row.Height);
+                    using Graphics g = Graphics.FromImage(bitmap);
+                    painter.DrawMenuItemBackground(new ToolStripItemRenderEventArgs(g, row));
+                    return bitmap.GetPixel(row.Width / 4, row.Height / 2);
+                }
+                Color editorRest = MenuFill(renderer), dialogRest = MenuFill(menu.Renderer);
+                row.Select();
+                Check(row.Selected && Math.Abs(MenuFill(renderer).R - editorRest.R) >= 12 &&
+                    Math.Abs(MenuFill(menu.Renderer).R - dialogRest.R) >= 12,
+                    "checked rows still show hover in editor and dialog menus");
+
+                void VerifyControl(Control control, string label)
+                {
+                    control.Size = new Size(230, 68);
+                    Color Fill()
+                    {
+                        using Bitmap bitmap = new(control.Width, control.Height);
+                        control.DrawToBitmap(bitmap, control.ClientRectangle);
+                        return bitmap.GetPixel(control.Width / 2, control.Height / 3);
+                    }
+                    Color resting = Fill();
+                    typeof(Control).GetMethod("OnMouseEnter", instancePrivate)!.Invoke(control, [EventArgs.Empty]);
+                    Check(Math.Abs(Fill().R - resting.R) >= 12, label + " shows visible hover");
+                    typeof(Control).GetMethod("OnMouseLeave", instancePrivate)!.Invoke(control, [EventArgs.Empty]);
+                    Check(Fill().ToArgb() == resting.ToArgb(), label + " clears hover on leave");
+                }
+                using ComboBox source = new();
+                using EditorOptionChoice choice = new(source, transparency: true);
+                choice.ApplyPalette(palette);
+                VerifyControl(choice, "editor option dropdown");
+                using ComboBox fonts = (ComboBox)Activator.CreateInstance(
+                    typeof(RegionCaptureForm).Assembly.GetType("ShareX.ScreenCaptureLib.TextFontChoice", throwOnError: true)!, nonPublic: true)!;
+                fonts.DropDownStyle = ComboBoxStyle.DropDownList;
+                typeof(EditorTextDialogAppearance).GetMethod("StyleFonts", BindingFlags.Static | BindingFlags.NonPublic)!
+                    .Invoke(null, [fonts, palette]);
+                VerifyControl(fonts, "text font dropdown");
+                using CheckBox bold = new() { Checked = true };
+                DialogChrome.StyleButton(bold, palette);
+                VerifyControl(bold, "checked formatting button");
+                using Panel settings = new() { BackColor = palette.Background };
+                using SettingsDisclosure disclosure = new() { Palette = palette };
+                settings.Controls.Add(disclosure);
+                VerifyControl(disclosure, "scrolling options disclosure");
+            }
+        }
+        finally { UiMotion.UserEnabled = motion; }
+    }
     internal static async Task RunAsync(MainForm main)
     {
         Directory.CreateDirectory("artifacts/image-editor");

@@ -4,6 +4,7 @@ using ShareX.ScreenCaptureLib;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Reflection;
+using System.Runtime.InteropServices;
 
 internal static class EditorTextDialogRegression
 {
@@ -26,6 +27,46 @@ internal static class EditorTextDialogRegression
     private static bool IsSurface(Color value, CapturePalette palette) =>
         SameColor(value, palette.Surface) || SameColor(value, palette.Canvas) || SameColor(value, palette.Background);
 
+    [DllImport("user32.dll")]
+    private static extern bool LogicalToPhysicalPointForPerMonitorDPI(nint window, ref Point point);
+    [DllImport("user32.dll")]
+    private static extern nint SetThreadDpiAwarenessContext(nint context);
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmFlush();
+
+    private static async Task VerifyLiveInput(TextBox input, Color ink, string context)
+    {
+        input.Focus();
+        const string entered = "SnapFlow 123";
+        foreach (char character in entered)
+            NativeMethods.SendMessage(input.Handle, (uint)WindowsMessages.CHAR, (nint)character, 1);
+        Check(input.Text == entered, context + ": native character input reaches the edit control");
+        input.Update();
+        await Task.Delay(150);
+        Point first = input.PointToScreen(Point.Empty);
+        Point last = input.PointToScreen(new Point(input.Width, Math.Min(input.Height, input.Font.Height + 6)));
+        Check(LogicalToPhysicalPointForPerMonitorDPI(input.Handle, ref first) &&
+            LogicalToPhysicalPointForPerMonitorDPI(input.Handle, ref last), context + ": mapped the visible text line");
+        DwmFlush();
+        nint previous = SetThreadDpiAwarenessContext(-4);
+        try
+        {
+            using Bitmap line = new Screenshot { RemoveOutsideScreenArea = false }.CaptureRectangle(Rectangle.FromLTRB(first.X, first.Y, last.X, last.Y));
+            double inkLuma = Luminance(ink), backgroundLuma = Luminance(input.BackColor);
+            int nearInk = 0, wrongBackground = 0;
+            for (int y = 2; y < line.Height - 2; y++)
+            {
+                for (int x = line.Width / 4; x < line.Width * 3 / 4; x++)
+                    if (Math.Abs(Luminance(line.GetPixel(x, y)) - inkLuma) < .05) nearInk++;
+                if (Math.Abs(Luminance(line.GetPixel(line.Width * 9 / 10, y)) - backgroundLuma) > .06) wrongBackground++;
+            }
+            Check(nearInk > 15 && wrongBackground == 0,
+                $"{context}: glyphs are visible on the actual preview surface ({nearInk} ink pixels, {wrongBackground} mismatched rows)");
+        }
+        finally { if (previous != 0) SetThreadDpiAwarenessContext(previous); }
+        input.Clear();
+    }
+
     private static double Luminance(Color color)
     {
         static double Linear(byte value)
@@ -45,7 +86,11 @@ internal static class EditorTextDialogRegression
             foreach ((string name, CapturePalette palette, bool dark) in new[]
             {
                 ("default-light", CapturePalette.Light, false), ("default-dark", CapturePalette.Dark, true),
-                ("claude-light", CapturePalette.ClaudeLight, false), ("claude-dark", CapturePalette.ClaudeDark, true)
+                ("claude-light", CapturePalette.ClaudeLight, false), ("claude-dark", CapturePalette.ClaudeDark, true),
+                ("material-light", CapturePalette.For(AppearanceMode.Light, SoftwareStyle.MaterialYou), false),
+                ("material-dark", CapturePalette.For(AppearanceMode.Dark, SoftwareStyle.MaterialYou), true),
+                ("winui-light", CapturePalette.WinUILight, false), ("winui-dark", CapturePalette.WinUIDark, true),
+                ("metro-light", CapturePalette.MetroLight, false), ("metro-dark", CapturePalette.MetroDark, true)
             })
             {
                 palette.ApplyLibraryTheme();
@@ -66,6 +111,12 @@ internal static class EditorTextDialogRegression
                     shape.TextOptions.Color = annotation;
                     shape.TextOptions.Bold = false;
                     shape.TextOptions.Size = 18;
+                    if (palette.IsMaterial)
+                    {
+                        using FontFamily? variable = FontFamily.Families.FirstOrDefault(family => family.Name == "Bahnschrift SemiBold");
+                        if (variable != null) shape.TextOptions.Font = variable.Name;
+                        shape.TextOptions.AlignmentHorizontal = StringAlignment.Center;
+                    }
                     const string sample = "文字标注\r\nSnapFlow";
 
                     await OpenModalAsync(shape.OnCreating, async dialog =>
@@ -74,7 +125,9 @@ internal static class EditorTextDialogRegression
                         TextBox input = Find<TextBox>(dialog, "txtInput");
                         Check(dialog.Owner == editor && dialog.Text.StartsWith("SnapFlow", StringComparison.Ordinal) &&
                             (dialog.ActiveControl == input || input.Focused), context + ": editor owns the modal and the text field has initial focus");
-                        Check(SameColor(dialog.BackColor, palette.Background) && SameColor(dialog.ForeColor, palette.Text),
+                        if (palette.UsesFilledActions) await VerifyLiveInput(input, annotation, context);
+                        Color dialogSurface = palette.IsMaterial ? palette.Surface : palette.Background;
+                        Check(SameColor(dialog.BackColor, dialogSurface) && SameColor(dialog.ForeColor, palette.Text),
                             context + ": dialog has the editor's background and text colors");
                         Label tip = Find<Label>(dialog, "lblTip");
                         using Font expectedTipFont = CaptureTypography.CreateDescription(dialog.Font, tip.Font.SizeInPoints, palette);
@@ -98,6 +151,9 @@ internal static class EditorTextDialogRegression
                         fonts.DroppedDown = false;
                         fonts.SelectedIndex = originalFont;
                         Control tools = Find<Control>(dialog, "flpProperties");
+                        if (palette.IsMaterial)
+                            Check(SameColor(tools.BackColor, dialogSurface) && SameColor(tip.BackColor, dialogSurface),
+                                context + ": toolbar and shortcut hint share the dialog surface");
                         Check(tools.Controls.Cast<Control>().Where(control => control.Visible)
                             .All(control => tools.ClientRectangle.Contains(control.Bounds)), context + ": toolbar keeps all visible controls within its bounds");
                         Button ok = Find<Button>(dialog, "btnOK");
@@ -141,8 +197,13 @@ internal static class EditorTextDialogRegression
                             button.PerformClick();
                             try
                             {
-                                Check(menu.Visible && menu.RenderMode == ToolStripRenderMode.Custom && IsSurface(menu.BackColor, palette),
+                                Color surface = palette.UsesFilledActions ? palette.RaisedSurface : palette.Surface;
+                                Check(menu.Visible && menu.RenderMode == ToolStripRenderMode.Custom && SameColor(menu.BackColor, surface),
                                     context + ": " + menuName + " opens with the editor's palette");
+                                if (palette.UsesFilledActions)
+                                {
+                                    Check(menu.Region != null, context + ": " + menuName + " uses the style's popup geometry");
+                                }
                             }
                             finally { menu.Close(); }
                         }
@@ -167,7 +228,8 @@ internal static class EditorTextDialogRegression
                     await OpenModalAsync(shape.OnDoubleClicked, dialog =>
                     {
                         TextBox input = Find<TextBox>(dialog, "txtInput");
-                        Check(input.Text == sample && SameColor(dialog.BackColor, palette.Background),
+                        Color dialogSurface = palette.IsMaterial ? palette.Surface : palette.Background;
+                        Check(input.Text == sample && SameColor(dialog.BackColor, dialogSurface),
                             name + ": editing an existing annotation opens the same themed modal");
                         input.Text = "未保存的修改";
                         Find<Button>(dialog, "btnCancel").PerformClick();

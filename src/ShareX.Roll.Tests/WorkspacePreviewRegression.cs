@@ -83,7 +83,8 @@ internal static class WorkspacePreviewRegression
         legacy.Save(legacyPath);
         Check(ApplicationPreferences.Load(legacyPath).Shortcuts["region"] == Keys.None, "disabled region and window shortcuts stay disabled");
         File.WriteAllText(legacyPath, "{\"Shortcuts\":{}}");
-        Check(ApplicationPreferences.Load(legacyPath).Shortcuts["region"] == (Keys.Control | Keys.Shift | Keys.A), "new and partial settings use the merged default shortcut");
+        Check(ApplicationPreferences.Load(legacyPath).Shortcuts.Values.All(keys => keys == Keys.None),
+            "unsaved shortcuts stay unassigned");
 
         using Form target = new()
         {

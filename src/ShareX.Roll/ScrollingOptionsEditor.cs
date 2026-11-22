@@ -183,26 +183,32 @@ internal sealed class SettingsDisclosure : Button
         else g.Clear(Parent?.BackColor ?? Palette.Surface);
         g.SmoothingMode = SmoothingMode.AntiAlias;
         RectangleF face = ButtonElevation.CompactFaceBounds(ClientSize, s);
-        elevation.PaintShadow(g, ClientSize, s, Palette.Background.GetBrightness() < .5f, Enabled && !Palette.IsClaude ? hover.Value : 0, compact: true, unified: true);
-        using GraphicsPath shape = CaptureDrawing.Rounded(face, ButtonElevation.CompactRadius(face, s));
+        elevation.PaintShadow(g, ClientSize, s, Palette.Background.GetBrightness() < .5f, Enabled && Palette.Style == SoftwareStyle.Default ? hover.Value : 0, compact: true, unified: true);
+        float radius = Palette.CornerRadius(Palette.IsWinUI ? CapturePalette.WinUIControlRadius * s :
+            Palette.IsMaterial ? MaterialPalette.ControlRadius * s : ButtonElevation.CompactRadius(face, s));
+        if (Palette.IsMaterial || Palette.IsWinUI) CaptureDrawing.InsetAntialiasedFace(ref face, ref radius);
+        using GraphicsPath shape = CaptureDrawing.Rounded(face, radius);
         float emphasis = Enabled && Palette.IsClaude ? hover.Value : 0;
-        using SolidBrush fill = new(CaptureDrawing.Blend(Parent?.BackColor ?? Palette.Surface, ButtonElevation.Surface(Palette),
-            Palette.IsClaude ? emphasis * .4f : hover.Value));
+        Color resting = Palette.IsMaterial ? Expanded ? Palette.Tint : Palette.RaisedSurface : Parent?.BackColor ?? Palette.Surface;
+        Color background = Palette.IsWinUI ? Palette.WinUIHoverFill(resting, Enabled ? hover.Value : 0) :
+            CaptureDrawing.Blend(resting, ButtonElevation.Surface(Palette), Palette.IsClaude ? emphasis * .4f : hover.Value);
+        using SolidBrush fill = new(background);
         g.FillPath(fill, shape);
         if (Focused && ShowFocusCues || SystemInformation.HighContrast)
         {
             using Pen edge = new(Palette.Accent, 1.5f * s);
-            if (Palette.IsClaude) CaptureDrawing.DrawInsideBorder(g, face, ButtonElevation.CompactRadius(face, s), edge.Color, edge.Width);
+            if (Palette.HasShapedControls) CaptureDrawing.DrawInsideBorder(g, face, radius, edge.Color, edge.Width);
             else g.DrawPath(edge, shape);
         }
         TextRenderer.DrawText(g, Text, Font, new Rectangle((int)(SettingsLayout.Inset * s), 0, Math.Max(0, Width - (int)(2 * SettingsLayout.Inset * s)), Height),
-            CaptureDrawing.Blend(Palette.Text, Palette.Accent, emphasis),
+            Palette.IsMaterial && Expanded ? Palette.TintText : CaptureDrawing.Blend(Palette.Text, Palette.Accent, emphasis),
             TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | UiLanguage.TextDirection);
         float x = face.Right - 15 * s, y = Height / 2f;
         using Pen chevron = new(CaptureDrawing.Blend(Palette.Secondary, Palette.Accent, emphasis), 1.7f * s)
             { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
         g.TranslateTransform(x, y);
         g.RotateTransform(-180 * rotation.Value);
+        if (ThemeIcons.TryDraw(g, ThemeIcons.Centered(0, 0, 15 * s), Palette.Style, "chevronDown", chevron.Color)) return;
         g.DrawLines(chevron, new PointF[] { new(-4 * s, -2 * s), new(0, 2 * s), new(4 * s, -2 * s) });
     }
 

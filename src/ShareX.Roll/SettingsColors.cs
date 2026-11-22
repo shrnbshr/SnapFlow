@@ -16,11 +16,23 @@ internal static class SettingsColors
             control.ForeColor = Equals(control.Tag, "secondary") ? palette.Secondary : palette.Text;
             if (control is DescriptionLabel description)
                 CaptureTypography.ApplyDescription(description, root.Font, palette);
+            if (control.Name is "settingsTitle" or "aboutAppName")
+                CaptureTypography.ApplyHeading(control, root.Font, control.Name == "settingsTitle" ? 18 : 20, palette);
             if (control is AboutDocumentButton)
-                ButtonPointerBounds.Apply(control, palette.IsClaude);
+                ButtonPointerBounds.Apply(control, palette.HasShapedControls,
+                    radius: palette.IsMetro ? 0 : palette.IsWinUI ? CapturePalette.WinUIControlRadius :
+                        palette.IsMaterial ? MaterialPalette.PillRadius : null);
             else if (control is AboutLinkButton or SettingsDisclosure or ShortcutRecorder or ShortcutClearButton or ThemeOption)
-                ButtonPointerBounds.Apply(control, palette.IsClaude, compact: true,
-                    radius: control is ThemeOption ? ThemeOption.ClaudeCornerRadius : null);
+                ButtonPointerBounds.Apply(control, palette.HasShapedControls, compact: true, radius: control switch
+                {
+                    _ when palette.IsMetro => 0,
+                    ThemeOption => palette.IsWinUI ? CapturePalette.WinUIOverlayRadius : palette.IsMaterial ? ThemeOption.MaterialCornerRadius : ThemeOption.ClaudeCornerRadius,
+                    _ when palette.IsWinUI => CapturePalette.WinUIControlRadius,
+                    ShortcutRecorder when palette.IsMaterial => MaterialPalette.FieldRadius,
+                    ShortcutClearButton when palette.IsMaterial => MaterialPalette.PillRadius,
+                    _ when palette.IsMaterial => MaterialPalette.ControlRadius,
+                    _ => null
+                });
             if (control.Name == "aboutDivider") control.BackColor = palette.Border;
             if (control is SettingsFolderField folderField) { folderField.ApplyPalette(palette); return; }
             if (control is SettingsNumberField number) { number.ApplyPalette(palette); return; }
@@ -30,7 +42,7 @@ internal static class SettingsColors
             if (control is AppMark mark) { mark.Palette = palette; mark.Invalidate(); }
             if (control is LinkLabel link)
             {
-                link.LinkColor = link.VisitedLinkColor = palette.Accent;
+                link.LinkColor = link.VisitedLinkColor = palette.LinkInk;
                 link.ActiveLinkColor = palette.Text;
                 link.LinkBehavior = palette.IsClaude ? LinkBehavior.AlwaysUnderline : LinkBehavior.SystemDefault;
             }

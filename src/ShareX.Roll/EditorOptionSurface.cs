@@ -52,7 +52,7 @@ internal sealed class EditorOptionSurface : NativeWindow, IDisposable
             SendMessage(message.HWnd, 0x318, memoryDc, new IntPtr(4 | 8));
             GdiFlush();
             Marshal.Copy(bits, pixels, 0, pixels.Length);
-            uint background = (uint)palette.Background.ToArgb() & 0xFFFFFF;
+            uint background = (uint)palette.MenuSurface.ToArgb() & 0xFFFFFF;
             uint tint = BackdropSnapshot.RemoveMatte(background, matte);
             for (int index = 0; index < pixels.Length; index++)
             {

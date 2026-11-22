@@ -12,9 +12,11 @@ internal sealed record CapturePalette(Color Background, Color Surface, Color Can
     private static Color Hex(string value) => ColorTranslator.FromHtml(value);
 
     internal static CapturePalette Light { get; } = new(Hex("#F5F5F7"), Hex("#FFFFFF"), Hex("#FAFAFC"),
-        Hex("#1D1D1F"), Hex("#62626A"), Hex("#0066CC"), Color.White, Hex("#DEDEE4"), Hex("#ECECF1"), Hex("#E9F1FF"));
+        Hex("#1D1D1F"), Hex("#484850"), Hex("#0066CC"), Color.White, Hex("#DEDEE4"), Hex("#ECECF1"), Hex("#E9F1FF"))
+        { LinkInk = Hex("#00488F") };
     internal static CapturePalette Dark { get; } = new(Hex("#18181B"), Hex("#242427"), Hex("#202023"),
-        Hex("#F3F3F5"), Hex("#B3B3BC"), Hex("#8AB4FF"), Hex("#10213B"), Hex("#3D3D44"), Hex("#323239"), Hex("#2B3D5A"));
+        Hex("#F3F3F5"), Hex("#D8D8DE"), Hex("#8AB4FF"), Hex("#10213B"), Hex("#3D3D44"), Hex("#323239"), Hex("#2B3D5A"))
+        { LinkInk = Hex("#A9CEFF") };
 
     internal static CapturePalette ClaudeLight { get; } = new(Hex("#FAF9F5"), Hex("#F1EEE5"), Hex("#FAF9F5"),
         Hex("#141413"), Hex("#625F56"), Hex("#99452F"), Hex("#FAF9F5"), Hex("#E1DDD2"), Hex("#E8E6DC"), Hex("#F4E3D8"))
@@ -23,11 +25,43 @@ internal sealed record CapturePalette(Color Background, Color Surface, Color Can
         Hex("#FAF9F5"), Hex("#B0AEA5"), Hex("#F3A48A"), Hex("#1C1B19"), Hex("#4D453C"), Hex("#38322B"), Hex("#453028"))
         { Style = SoftwareStyle.Claude, IllustrationAccent = Hex("#F3A48A"), FieldBorder = Hex("#887E71") };
 
-    internal SoftwareStyle Style { get; private init; }
+    internal static CapturePalette WinUILight { get; } = new(Hex("#F3F3F3"), Hex("#FBFBFB"), Hex("#FFFFFF"),
+        Hex("#1A1A1A"), Hex("#484848"), Hex("#005FB8"), Color.White, Hex("#E0E0E0"), Hex("#EEEEEE"), Hex("#E5EFF9"))
+        { Style = SoftwareStyle.WinUI, FieldBorder = Hex("#858585"), RaisedSurface = Hex("#FFFFFF"), TintText = Hex("#003760"), LinkInk = Hex("#004E97") };
+    internal static CapturePalette WinUIDark { get; } = new(Hex("#202020"), Hex("#2B2B2B"), Hex("#272727"),
+        Hex("#FFFFFF"), Hex("#DEDEDE"), Hex("#60CDFF"), Hex("#001926"), Hex("#424242"), Hex("#383838"), Hex("#244351"))
+        { Style = SoftwareStyle.WinUI, FieldBorder = Hex("#959595"), RaisedSurface = Hex("#323232"), TintText = Hex("#CDEEFF") };
+
+    internal static CapturePalette MetroLight { get; } = new(Hex("#F7F7F7"), Color.White, Hex("#EDEDED"),
+        Hex("#171717"), Hex("#505050"), Hex("#5932A5"), Color.White, Hex("#D1D1D1"), Hex("#E4DDED"), Hex("#E8DEF9"))
+        { Style = SoftwareStyle.MetroClassic, FieldBorder = Hex("#767676"), RaisedSurface = Hex("#ECECEC"), TintText = Hex("#3E1D77") };
+    internal static CapturePalette MetroDark { get; } = new(Hex("#141414"), Hex("#1F1F1F"), Hex("#0E0E0E"),
+        Hex("#FFFFFF"), Hex("#C4C4C4"), Hex("#C5A7FF"), Hex("#1A0B2B"), Hex("#454545"), Hex("#36303F"), Hex("#432965"))
+        { Style = SoftwareStyle.MetroClassic, FieldBorder = Hex("#929292"), RaisedSurface = Hex("#2B2B2B"), TintText = Hex("#EBDDFF") };
+
+    internal const int WinUIControlRadius = 4;
+    internal const int WinUIOverlayRadius = 8;
+    internal SoftwareStyle Style { get; init; }
     internal bool IsClaude => Style == SoftwareStyle.Claude;
-    internal Color IllustrationAccent { get; private init; }
-    internal Color FieldBorder { get; private init; }
-    internal bool AllowsTransparency(bool enabled) => enabled && !IsClaude;
+    internal bool IsMaterial => Style == SoftwareStyle.MaterialYou;
+    internal bool IsWinUI => Style == SoftwareStyle.WinUI;
+    internal bool IsMetro => Style == SoftwareStyle.MetroClassic;
+    internal bool HasShapedControls => Style != SoftwareStyle.Default;
+    internal bool UsesFilledActions => IsMaterial || IsWinUI || IsMetro;
+    internal Color IllustrationAccent { get; init; }
+    internal Color FieldBorder { get; init; }
+    internal Color RaisedSurface { get; init; }
+    internal Color TintText { get; init; }
+    internal Color LinkInk { get; init; } = Accent;
+    internal bool SupportsBackdrop => Style is SoftwareStyle.Default or SoftwareStyle.WinUI;
+    internal bool AllowsTransparency(bool enabled) => enabled && SupportsBackdrop;
+    internal float CornerRadius(float radius) => IsMetro ? 0 : radius;
+    internal int MenuRadius => IsMetro ? 0 : IsWinUI ? WinUIOverlayRadius : IsMaterial ? MaterialPalette.MenuRadius : 10;
+    internal Color MenuSurface => IsMaterial ? RaisedSurface : Background;
+    internal Color PrimaryFill(float hover, float press) =>
+        CaptureDrawing.Blend(Accent, AccentText, Math.Max(.08f * hover, .14f * press));
+    internal Color WinUIHoverFill(Color resting, float amount = 1) =>
+        CaptureDrawing.Blend(resting, Text, .10f * amount);
 
     internal static CapturePalette Current
     {
@@ -58,7 +92,14 @@ internal sealed record CapturePalette(Color Background, Color Surface, Color Can
             AppearanceMode.Dark => true,
             _ => Current == Dark
         };
-        return style == SoftwareStyle.Claude ? (dark ? ClaudeDark : ClaudeLight) : (dark ? Dark : Light);
+        return style switch
+        {
+            SoftwareStyle.Claude => dark ? ClaudeDark : ClaudeLight,
+            SoftwareStyle.MaterialYou => MaterialPalette.For(dark),
+            SoftwareStyle.WinUI => dark ? WinUIDark : WinUILight,
+            SoftwareStyle.MetroClassic => dark ? MetroDark : MetroLight,
+            _ => dark ? Dark : Light
+        };
     }
 
     internal void ApplyLibraryTheme()
@@ -71,8 +112,8 @@ internal sealed record CapturePalette(Color Background, Color Surface, Color Can
         theme.BorderColor = Border;
         theme.CheckerColor = Surface;
         theme.CheckerColor2 = Canvas;
-        theme.LinkColor = Accent;
-        theme.MenuHighlightColor = Hover;
+        theme.LinkColor = LinkInk;
+        theme.MenuHighlightColor = IsMaterial || IsMetro ? Tint : Hover;
         theme.MenuHighlightBorderColor = Accent;
         theme.MenuBorderColor = Border;
         theme.SeparatorLightColor = Surface;
@@ -173,7 +214,11 @@ internal static class CaptureButtonPainter
             states.Add(button, state);
             State tracked = state;
             button.MouseEnter += (_, _) => tracked.Hover.SpringTo(1, ButtonElevation.ResponseMilliseconds);
-            button.MouseLeave += (_, _) => { tracked.Hover.SpringTo(0, ButtonElevation.ResponseMilliseconds); tracked.Press.SpringTo(0, 90); };
+            button.MouseLeave += (_, _) =>
+            {
+                tracked.Hover.SpringTo(0, ButtonElevation.ResponseMilliseconds);
+                tracked.Press.SpringTo(0, 90);
+            };
             button.MouseDown += (_, e) => { if (e.Button == MouseButtons.Left) tracked.Press.SnapTo(1); };
             button.MouseUp += (_, _) => tracked.Press.SpringTo(0, 110);
             button.MouseCaptureChanged += (_, _) => { if (!button.Capture) tracked.Press.SpringTo(0, 110); };
@@ -195,8 +240,10 @@ internal static class CaptureButtonPainter
         }
         state.Palette = palette;
         state.Primary = primary;
-        if (button.Parent is PreviewZoomBar) ButtonPointerBounds.ApplyInset(button, palette.IsClaude, 8);
-        else ButtonPointerBounds.Apply(button, palette.IsClaude, radius: 8);
+        float radius = palette.CornerRadius(palette.IsWinUI ? CapturePalette.WinUIControlRadius :
+            palette.IsMaterial ? MaterialPalette.PillRadius : 8);
+        if (button.Parent is PreviewZoomBar) ButtonPointerBounds.ApplyInset(button, palette.HasShapedControls, radius);
+        else ButtonPointerBounds.Apply(button, palette.HasShapedControls, radius: radius);
         button.Invalidate();
     }
 
@@ -208,8 +255,13 @@ internal static class CaptureButtonPainter
         bool quiet = Equals(button.Tag, "quiet") && !primary;
         bool textAction = p.IsClaude && (state.Primary || quiet &&
             (button.Parent is not PreviewZoomBar || button.Name == "previewFitWidth"));
-        Color background = textAction || quiet ? button.Parent?.BackColor ?? p.Background : primary ? p.Accent : p.Surface;
-        if (button.Enabled && !textAction)
+        Color background = textAction || quiet ? button.Parent?.BackColor ?? p.Background :
+            primary ? p.Accent : p.UsesFilledActions ? p.RaisedSurface : p.Surface;
+        if (primary && p.UsesFilledActions)
+        {
+            background = p.PrimaryFill(state.Hover.Value, state.Press.Value);
+        }
+        else if (button.Enabled && !textAction)
         {
             background = CaptureDrawing.Blend(background, button.FlatAppearance.MouseOverBackColor, state.Hover.Value);
             background = CaptureDrawing.Blend(background, button.FlatAppearance.MouseDownBackColor, state.Press.Value);
@@ -231,26 +283,29 @@ internal static class CaptureButtonPainter
             (NativeMethods.SendMessage(button.Handle, (uint)WindowsMessages.QUERYUISTATE, IntPtr.Zero, IntPtr.Zero).ToInt64() & 1) == 0;
         float borderWidth = (focus ? 1.75f : 1) * s;
         bool material = button.Parent is not PreviewZoomBar;
-        float elevation = button.Enabled && button.Parent is not PreviewZoomBar && !SystemInformation.HighContrast && !p.IsClaude
+        float elevation = button.Enabled && button.Parent is not PreviewZoomBar && !SystemInformation.HighContrast && p.Style == SoftwareStyle.Default
             ? state.Hover.Value * (1 - state.Press.Value) : 0;
         float lift = UiMotion.Enabled ? elevation * ButtonElevation.Lift * s : 0;
         RectangleF face = material ? ButtonElevation.FaceBounds(button.ClientSize, s) :
             new RectangleF(s, s, button.Width - 2 * s, button.Height - 2 * s);
-        if (material && !p.IsClaude)
+        if (material && p.Style == SoftwareStyle.Default)
         {
             face.Offset(0, -lift);
             face.Inflate(-state.Press.Value * .5f * s, -state.Press.Value * .5f * s);
         }
         state.Elevation.PaintShadow(g, button.ClientSize, s, p.Background.GetBrightness() < .5f, elevation, unified: true);
-        float radius = p.IsClaude ? 8 * s : material ? ButtonElevation.Radius(face, s) : 12 * s;
+        float radius = p.IsWinUI ? CapturePalette.WinUIControlRadius * s :
+            p.IsMaterial ? face.Height / 2 : p.IsClaude ? 8 * s : material ? ButtonElevation.Radius(face, s) : 12 * s;
+        radius = p.CornerRadius(radius);
+        if (p.IsMaterial || p.IsWinUI) CaptureDrawing.InsetAntialiasedFace(ref face, ref radius);
         using GraphicsPath path = CaptureDrawing.Rounded(face, radius);
-        using SolidBrush fill = new(background);
-        g.FillPath(fill, path);
-        if (focus || SystemInformation.HighContrast || p.IsClaude && !quiet && !textAction)
+        using (SolidBrush fill = new(background)) g.FillPath(fill, path);
+        if (focus || SystemInformation.HighContrast || p.IsClaude && !quiet && !textAction || p.IsWinUI && !quiet && !primary)
         {
             Color edge = matte ? Color.Black : focus ? p.Accent : p.IsClaude && button.Enabled
                 ? CaptureDrawing.Blend(p.Border, p.FieldBorder, state.Hover.Value) : p.Border;
-            if (p.IsClaude) CaptureDrawing.DrawInsideBorder(g, face, radius, edge, borderWidth);
+            if (p.HasShapedControls)
+                CaptureDrawing.DrawInsideBorder(g, face, radius, p.UsesFilledActions && primary && focus ? p.AccentText : edge, borderWidth);
             else
             {
                 using Pen border = new(edge, borderWidth);
@@ -285,6 +340,8 @@ internal static class CaptureButtonPainter
             if (!matte && button.Enabled) ink = CaptureDrawing.Blend(ink, p.Accent, Math.Max(state.Hover.Value * .55f, state.Press.Value));
             float half = 5.5f * s * (1 - .1f * state.Press.Value);
             float x = button.Width / 2f, y = button.Height / 2f;
+            if (ThemeIcons.TryDraw(g, ThemeIcons.Centered(x, y, 3 * half), p.Style,
+                button.Name == "previewZoomIn" ? "plus" : "minus", ink)) return;
             using Pen symbol = new(ink, 1.7f * s) { StartCap = LineCap.Round, EndCap = LineCap.Round };
             g.DrawLine(symbol, x - half, y, x + half, y);
             if (button.Name == "previewZoomIn") g.DrawLine(symbol, x, y - half, x, y + half);
@@ -305,7 +362,7 @@ internal static class CaptureButtonPainter
                 "editButton" => "previewEdit", "copyButton" => "editorCopy",
                 "settingsButton" => "settings", _ => "previewSave"
             };
-            EditorIcons.Draw(g, new Rectangle(left, (button.Height - iconSize) / 2, iconSize, iconSize), null, icon, ink);
+            EditorIcons.Draw(g, new Rectangle(left, (button.Height - iconSize) / 2, iconSize, iconSize), null, icon, ink, p.Style);
             TextRenderer.DrawText(g, button.Text, button.Font,
                 new Rectangle(left + iconSize + gap, 0, Math.Max(0, width - iconSize - gap), button.Height), ink,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine | UiLanguage.TextDirection);
@@ -352,6 +409,11 @@ internal static class CaptureDrawing
     {
         GraphicsPath path = new();
         float d = Math.Min(radius * 2, Math.Min(rect.Width, rect.Height));
+        if (d <= 0)
+        {
+            if (rect.Width > 0 && rect.Height > 0) path.AddRectangle(rect);
+            return path;
+        }
         path.AddArc(rect.Left, rect.Top, d, d, 180, 90);
         path.AddArc(rect.Right - d, rect.Top, d, d, 270, 90);
         path.AddArc(rect.Right - d, rect.Bottom - d, d, d, 0, 90);
@@ -363,21 +425,24 @@ internal static class CaptureDrawing
     internal static int BorderPixelWidth(float thickness) =>
         Math.Max(1, (int)MathF.Round(thickness, MidpointRounding.AwayFromZero));
 
+    internal static RectangleF PixelAlignedBounds(RectangleF bounds) =>
+        RectangleF.FromLTRB(MathF.Ceiling(bounds.Left), MathF.Ceiling(bounds.Top),
+            MathF.Floor(bounds.Right), MathF.Floor(bounds.Bottom));
+
     internal static void InsetAntialiasedFace(ref RectangleF bounds, ref float radius)
     {
         // The native hit region has a hard edge. Leave room for two device pixels between it
         // and the painted contour so it cannot cut off the curve's antialiasing.
         const float clearance = 2;
         bounds.Inflate(-clearance, -clearance);
-        radius = Math.Max(1, radius - clearance);
+        if (radius > 0) radius = Math.Max(1, radius - clearance);
     }
 
     internal static void DrawInsideBorder(Graphics graphics, RectangleF bounds, float radius, Color color, float thickness)
     {
         // A centered pen straddles the HWND region and its surviving half can
         // rasterize differently on opposing edges. Fill a pixel-aligned ring inside it.
-        RectangleF outer = RectangleF.FromLTRB(MathF.Ceiling(bounds.Left), MathF.Ceiling(bounds.Top),
-            MathF.Floor(bounds.Right), MathF.Floor(bounds.Bottom));
+        RectangleF outer = PixelAlignedBounds(bounds);
         if (outer.Width <= 0 || outer.Height <= 0) return;
         int width = BorderPixelWidth(thickness);
         using GraphicsPath ring = radius > 0 ? Rounded(outer, radius) : new GraphicsPath();
@@ -445,6 +510,9 @@ internal static class CaptureDrawing
 
 internal sealed class CaptureModeButton : Button
 {
+    private static readonly Color RegionTile = Color.FromArgb(0, 90, 158);
+    private static readonly Color FullTile = Color.FromArgb(0, 112, 115);
+    private static readonly Color ScrollTile = Color.FromArgb(97, 50, 166);
     private readonly UiTween hover, press;
     private CapturePalette palette = CapturePalette.Light;
     internal string Kind { get; init; } = "region";
@@ -455,10 +523,12 @@ internal sealed class CaptureModeButton : Button
         set
         {
             palette = value;
-            ButtonPointerBounds.ApplyInset(this, true, 9);
+            ButtonPointerBounds.ApplyInset(this, true, CommandRadius(value));
             Invalidate();
         }
     }
+
+    private static float CommandRadius(CapturePalette palette) => palette.CornerRadius(palette.IsWinUI ? CapturePalette.WinUIControlRadius : palette.IsMaterial ? MaterialPalette.ControlRadius : 9);
 
     internal CaptureModeButton()
     {
@@ -509,23 +579,39 @@ internal sealed class CaptureModeButton : Button
         if (Width <= 4 * s || Height <= 4 * s) return;
         g.SmoothingMode = SmoothingMode.AntiAlias;
         RectangleF face = new(s, s, Width - 2 * s, Height - 2 * s);
-        float radius = 9 * s;
+        float radius = CommandRadius(p) * s;
         CaptureDrawing.InsetAntialiasedFace(ref face, ref radius);
+        bool focused = Focused && ShowFocusCues;
         float hoverAmount = Enabled ? hover.Value : 0;
         float pressAmount = Enabled ? press.Value : 0;
         Color fill = CaptureDrawing.Blend(CaptureDrawing.Blend(parent, p.Hover, hoverAmount), p.Tint, pressAmount);
-        using GraphicsPath path = CaptureDrawing.Rounded(face, radius);
-        using SolidBrush brush = new(matte ? CaptureButtonPainter.Coverage(glassParent ? (1 - hoverAmount) * (1 - pressAmount) : 0) : fill);
-        g.FillPath(brush, path);
-        if (Focused && ShowFocusCues)
-            CaptureDrawing.DrawInsideBorder(g, face, radius, matte ? Color.Black : p.Accent, 1.5f * s);
-        Color ink = matte ? Color.Black : Enabled ? CaptureDrawing.Blend(p.Text, p.Accent, Math.Max(hoverAmount, pressAmount)) : p.Secondary;
+        Color tile = p.IsMetro && Enabled ? Kind switch
+        {
+            "region" => RegionTile,
+            "full" => FullTile,
+            "scroll" => ScrollTile,
+            _ => Color.Empty
+        } : Color.Empty;
+        if (!tile.IsEmpty)
+            fill = CaptureDrawing.Blend(tile, Color.Black, Math.Max(hoverAmount * .14f, pressAmount * .26f));
+        using (GraphicsPath path = CaptureDrawing.Rounded(face, radius))
+        {
+            float coverage = glassParent ? (1 - hoverAmount) * (1 - pressAmount) : 0;
+            using SolidBrush brush = new(matte ? CaptureButtonPainter.Coverage(coverage) : fill);
+            g.FillPath(brush, path);
+        }
+        if (focused)
+            CaptureDrawing.DrawInsideBorder(g, face, radius, matte ? Color.Black : tile.IsEmpty ? p.Accent : Color.White, 1.5f * s);
+        Color ink = matte ? Color.Black : !tile.IsEmpty ? Color.White : !Enabled ? p.Secondary :
+            CaptureDrawing.Blend(p.Text, p.IsMaterial ? p.TintText : p.Accent, Math.Max(hoverAmount, pressAmount));
         int size = (int)Math.Round(20 * s);
         Rectangle icon = new((Width - size) / 2, (Height - size) / 2, size, size);
         if (Kind is "region" or "full" or "scroll")
-            CaptureDrawing.Icon(g, Kind, icon, ink);
+        {
+            if (!ThemeIcons.TryDraw(g, icon, p.Style, Kind, ink)) CaptureDrawing.Icon(g, Kind, icon, ink);
+        }
         else
-            EditorIcons.Draw(g, icon, null, Kind, ink);
+            EditorIcons.Draw(g, icon, null, Kind, ink, p.Style);
     }
 
     protected override void Dispose(bool disposing)
@@ -620,7 +706,7 @@ internal sealed partial class PreviewCanvas : PictureBox
         base.OnPaint(e);
         displayed = null;
         g.SmoothingMode = SmoothingMode.AntiAlias;
-        using Font hint = CaptureTypography.CreateDescription(Font, 11, p);
+        using Font hint = p.IsMetro ? CaptureTypography.CreateHeading(Font, 15, p) : CaptureTypography.CreateDescription(Font, 11, p);
         TextRenderer.DrawText(g, L("ChooseCapture"), hint, ClientRectangle, p.Secondary,
             TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | UiLanguage.TextDirection);
         PaintViewportChrome(g);
