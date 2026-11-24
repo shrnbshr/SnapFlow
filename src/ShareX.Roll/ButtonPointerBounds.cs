@@ -6,7 +6,7 @@ namespace ShareX.Roll;
 
 internal sealed class ButtonPointerBounds
 {
-    private enum BoundsKind { None, Face, CompactFace, Inset, Toggle }
+    private enum BoundsKind { None, Face, CompactFace, Inset, Toggle, RoundedToggle }
 
     private static readonly ConditionalWeakTable<Control, ButtonPointerBounds> windows = new();
     private readonly Control control;
@@ -29,7 +29,8 @@ internal sealed class ButtonPointerBounds
         Apply(control, enabled ? BoundsKind.Inset : BoundsKind.None, radius);
 
     internal static void ApplyToggle(MotionToggle toggle, CapturePalette palette) =>
-        Apply(toggle, palette.HasShapedControls ? BoundsKind.Toggle : BoundsKind.None, palette.CornerRadius(12));
+        Apply(toggle, !palette.HasShapedControls ? BoundsKind.None : palette.IsMaterial || palette.IsMetro
+            ? BoundsKind.Toggle : BoundsKind.RoundedToggle, palette.CornerRadius(12));
 
     private static void Apply(Control control, BoundsKind kind, float? radius)
     {
@@ -52,13 +53,22 @@ internal sealed class ButtonPointerBounds
             {
                 BoundsKind.CompactFace => ButtonElevation.CompactFaceBounds(size, scale),
                 BoundsKind.Inset => new RectangleF(scale, scale, size.Width - 2 * scale, size.Height - 2 * scale),
-                BoundsKind.Toggle => MotionToggle.TrackBounds(size, scale),
+                BoundsKind.Toggle or BoundsKind.RoundedToggle => MotionToggle.TrackBounds(size, scale),
                 _ => ButtonElevation.FaceBounds(size, scale)
             };
             float corner = radius is float specified ? specified * scale : kind == BoundsKind.CompactFace
                 ? ButtonElevation.CompactRadius(face, scale) : ButtonElevation.Radius(face, scale);
+            if (kind == BoundsKind.RoundedToggle)
+            {
+                // Keep the antialiasing pixels on the outside of the painted track inside the HWND.
+                const float fringe = 2;
+                face.Inflate(fringe, fringe);
+                corner += fringe;
+            }
             using GraphicsPath path = CaptureDrawing.Rounded(face, corner);
             next = new Region(path);
+            if (kind == BoundsKind.RoundedToggle)
+                next.Intersect(Rectangle.Inflate(control.ClientRectangle, -1, -1));
         }
         if (next == null && applied == null) return;
         Region? previous = applied;

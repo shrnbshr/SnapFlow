@@ -246,7 +246,7 @@ internal sealed class EditorMenuBackdrop : NativeWindow, IDisposable
                 finally { renderer.PaintingCoverage = previousCoverage; }
                 GdiFlush();
                 Marshal.Copy(bits, coverage, 0, coverage.Length);
-                BackdropSnapshot.RemoveButtonMatte(output, coverage, matte);
+                BackdropSnapshot.RemoveCoverageMatte(output, coverage, matte);
                 Marshal.Copy(pixels, 0, bits, pixels.Length);
                 BitBlt(dc, 0, 0, surfaceSize.Width, surfaceSize.Height, memoryDc, 0, 0, 0x00CC0020);
             }

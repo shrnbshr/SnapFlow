@@ -51,10 +51,12 @@ internal sealed class MotionToggle : CheckBox
         CapturePalette p = Palette;
         float s = DeviceDpi / 96f;
         g.SmoothingMode = SmoothingMode.AntiAlias;
+        g.PixelOffsetMode = PixelOffsetMode.Half;
         g.Clear(Parent?.BackColor ?? p.Surface);
         RectangleF bounds = TrackBounds(ClientSize, s);
         float radius = p.CornerRadius(12) * s;
         if (p.IsMaterial) CaptureDrawing.InsetAntialiasedFace(ref bounds, ref radius);
+        if (p.HasShapedControls) bounds = CaptureDrawing.PixelAlignedBounds(bounds);
         using GraphicsPath track = CaptureDrawing.Rounded(bounds, radius);
         Color trackColor, thumbColor;
         if (p.IsWinUI || p.IsMetro)
@@ -104,7 +106,8 @@ internal sealed class MotionToggle : CheckBox
         {
             Color edge = !Enabled ? p.Border : CaptureDrawing.Blend(p.FieldBorder, p.Accent, position.Value);
             if (focused) edge = position.Value < .5f ? p.Accent : p.AccentText;
-            CaptureDrawing.DrawInsideBorder(g, bounds, radius, edge, (focused ? 1.5f : p.IsMaterial ? 1.5f : 1) * s);
+            if (edge != trackColor)
+                CaptureDrawing.DrawInsideBorder(g, bounds, radius, edge, (focused ? 1.5f : p.IsMaterial ? 1.5f : 1) * s);
         }
         else if (focused)
         {

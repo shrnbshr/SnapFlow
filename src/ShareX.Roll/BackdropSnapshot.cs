@@ -5,6 +5,11 @@ using System.Runtime.InteropServices;
 
 namespace ShareX.Roll;
 
+internal interface IBackdropCoverage
+{
+    void PaintBackgroundCoverage(Graphics graphics);
+}
+
 internal sealed class BackdropSnapshot
 {
     internal readonly Size Size;
@@ -63,9 +68,22 @@ internal sealed class BackdropSnapshot
     // Keep text and icon edges opaque if any ClearType channel contains foreground ink.
     internal static uint Coverage(uint pixel) => Math.Min((pixel >> 16) & 255, Math.Min((pixel >> 8) & 255, pixel & 255));
 
-    internal static void RemoveButtonMatte(Span<uint> colors, ReadOnlySpan<int> coverage, uint matte)
+    internal static void RemoveCoverageMatte(Span<uint> colors, ReadOnlySpan<int> coverage, uint matte)
     {
-        for (int i = 0; i < colors.Length; i++) colors[i] = RemoveMatte(colors[i], CoveredMatte(matte, Coverage((uint)coverage[i])));
+        for (int i = 0; i < colors.Length; i++)
+        {
+            uint background = Coverage((uint)coverage[i]);
+            colors[i] = background == 0 ? colors[i] | 0xFF000000 :
+                RemoveMatte(colors[i], background == 255 ? matte : CoveredMatte(matte, background));
+        }
+    }
+
+    internal static bool HasCoverageMask(Control control) => control is IBackdropCoverage || CaptureButtonPainter.HasBackdrop(control);
+
+    internal static void PaintCoverageMask(Control control, Graphics graphics)
+    {
+        if (control is IBackdropCoverage surface) surface.PaintBackgroundCoverage(graphics);
+        else CaptureButtonPainter.PaintBackdrop(control, graphics);
     }
 
     internal static BackdropSnapshot Capture(Control page, Bitmap image, CapturePalette palette, Point origin = default)
@@ -101,11 +119,11 @@ internal sealed class BackdropSnapshot
                     result.Pixels.AsSpan(y * image.Width + area.Left, area.Width).Clear();
                 return;
             }
-            if (CaptureButtonPainter.HasBackdrop(control))
+            if (HasCoverageMask(control))
             {
                 using Bitmap mask = new(control.Width, control.Height, PixelFormat.Format32bppArgb);
                 mask.SetResolution(control.DeviceDpi, control.DeviceDpi);
-                using (Graphics graphics = Graphics.FromImage(mask)) CaptureButtonPainter.PaintBackdrop(control, graphics);
+                using (Graphics graphics = Graphics.FromImage(mask)) PaintCoverageMask(control, graphics);
                 int[] row = new int[area.Width];
                 BitmapData maskData = mask.LockBits(new Rectangle(Point.Empty, mask.Size), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
                 try
@@ -118,7 +136,6 @@ internal sealed class BackdropSnapshot
                     }
                 }
                 finally { mask.UnlockBits(maskData); }
-                return;
             }
             foreach (Control child in control.Controls)
                 if (child.Visible) ProtectImages(child, new Point(origin.X + child.Left, origin.Y + child.Top), area);

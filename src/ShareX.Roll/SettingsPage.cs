@@ -585,7 +585,7 @@ internal sealed class SettingsPage : UserControl, IBackdropCachingScope
     }
 }
 
-internal sealed class SettingsGroup : TableLayoutPanel
+internal sealed class SettingsGroup : TableLayoutPanel, IBackdropCoverage
 {
     internal bool DrawDividers { get; set; }
     internal bool UsesPageDivider { get; private set; }
@@ -602,17 +602,20 @@ internal sealed class SettingsGroup : TableLayoutPanel
         Invalidate();
     }
 
-    internal void PaintChildBackground(Control child, Graphics graphics)
+    void IBackdropCoverage.PaintBackgroundCoverage(Graphics graphics) => PaintSurface(graphics, coverage: true);
+
+    internal void PaintChildBackground(Control child, Graphics graphics, bool coverage = false)
     {
         GraphicsState state = graphics.Save();
         graphics.TranslateTransform(-child.Left, -child.Top);
-        PaintSurface(graphics);
+        PaintSurface(graphics, coverage);
         graphics.Restore(state);
     }
 
-    private void PaintSurface(Graphics g)
+    private void PaintSurface(Graphics g, bool coverage = false)
     {
-        g.Clear(Palette.Background);
+        g.Clear(coverage ? Color.White : Palette.Background);
+        Color border = coverage ? Color.Black : Palette.Border;
         float scale = DeviceDpi / 96f;
         if (UsesPageDivider)
         {
@@ -620,20 +623,20 @@ internal sealed class SettingsGroup : TableLayoutPanel
             int thickness = CaptureDrawing.BorderPixelWidth(scale);
             if (Width > 2 * inset && Height >= thickness)
             {
-                using SolidBrush divider = new(Palette.Border);
+                using SolidBrush divider = new(border);
                 g.FillRectangle(divider, inset, Height - thickness, Width - 2 * inset, thickness);
             }
             return;
         }
         g.SmoothingMode = SmoothingMode.AntiAlias;
-        using Pen pen = new(Palette.Border);
+        using Pen pen = new(border);
         RectangleF bounds = Palette.IsClaude || Palette.IsWinUI ? ClientRectangle : new RectangleF(.5f, .5f, Width - 1, Height - 1);
         float radius = Palette.CornerRadius(Palette.IsWinUI ? CapturePalette.WinUIOverlayRadius :
             Palette.IsMaterial ? MaterialPalette.PanelRadius : Palette.IsClaude ? 10 : 16) * scale;
         using GraphicsPath path = CaptureDrawing.Rounded(bounds, radius);
-        using SolidBrush brush = new(Palette.Surface);
+        using SolidBrush brush = new(coverage ? Color.Black : Palette.Surface);
         g.FillPath(brush, path);
-        if (Palette.IsClaude || Palette.IsWinUI || Palette.IsMetro) CaptureDrawing.DrawInsideBorder(g, bounds, radius, Palette.Border, scale);
+        if (Palette.IsClaude || Palette.IsWinUI || Palette.IsMetro) CaptureDrawing.DrawInsideBorder(g, bounds, radius, border, scale);
         else if (SystemInformation.HighContrast) g.DrawPath(pen, path);
         if (!DrawDividers) return;
         int y = Padding.Top;
@@ -689,29 +692,15 @@ internal sealed class ThemeOption : RadioButton
     }
     protected override void OnGotFocus(EventArgs e) { base.OnGotFocus(e); Invalidate(); }
     protected override void OnLostFocus(EventArgs e) { base.OnLostFocus(e); Invalidate(); }
-    internal void PaintBackdrop(Graphics graphics)
+    internal void PaintBackdrop(Graphics graphics) => PaintCard(graphics, coverage: true);
+    protected override void OnPaint(PaintEventArgs e) => PaintCard(e.Graphics, coverage: false);
+
+    private void PaintCard(Graphics g, bool coverage)
     {
-        float scale = DeviceDpi / 96f;
-        graphics.Clear(Color.White);
-        graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        elevation.PaintShadow(graphics, ClientSize, scale, Palette.Background.GetBrightness() < .5f, Enabled ? hover.Value : 0, compact: true, unified: true);
-        RectangleF bounds = ButtonElevation.CompactFaceBounds(ClientSize, scale);
-        float radius = Palette.IsWinUI ? CapturePalette.WinUIOverlayRadius * scale : ButtonElevation.CompactRadius(bounds, scale);
-        using GraphicsPath face = CaptureDrawing.Rounded(bounds, radius);
-        graphics.FillPath(Brushes.Black, face);
-        if (Focused && ShowFocusCues)
-        {
-            using Pen focus = new(Color.Black, 1.75f * scale);
-            graphics.DrawPath(focus, face);
-        }
-    }
-    protected override void OnPaint(PaintEventArgs e)
-    {
-        Graphics g = e.Graphics;
         CapturePalette p = Palette;
         float s = DeviceDpi / 96f;
         g.SmoothingMode = SmoothingMode.AntiAlias;
-        g.Clear(p.Background);
+        g.Clear(coverage ? Color.White : p.Background);
         RectangleF face = ButtonElevation.CompactFaceBounds(ClientSize, s);
         if (p.Style == SoftwareStyle.Default)
             elevation.PaintShadow(g, ClientSize, s, p.Background.GetBrightness() < .5f, Enabled ? hover.Value : 0, compact: true, unified: true);
@@ -727,23 +716,24 @@ internal sealed class ThemeOption : RadioButton
             p.IsClaude ? (Checked ? selected : resting) : CaptureDrawing.Blend(resting, selected, selection.Value);
         Color ink = p.IsMetro && Checked ? p.AccentText : p.IsMaterial && Checked ? p.TintText : p.Text;
         bool focused = Focused && ShowFocusCues;
-        using (SolidBrush fill = new(background)) g.FillPath(fill, card);
+        using (SolidBrush fill = new(coverage ? Color.Black : background)) g.FillPath(fill, card);
         if (p.IsMetro && focused)
-            CaptureDrawing.DrawInsideBorder(g, paintedFace, radius, ink, 2 * s);
+            CaptureDrawing.DrawInsideBorder(g, paintedFace, radius, coverage ? Color.Black : ink, 2 * s);
         else if (p.IsClaude || p.IsWinUI)
         {
-            CaptureDrawing.DrawInsideBorder(g, paintedFace, radius, Checked || focused ? p.Accent : p.Border,
+            CaptureDrawing.DrawInsideBorder(g, paintedFace, radius, coverage ? Color.Black : Checked || focused ? p.Accent : p.Border,
                 (focused ? 1.75f : 1) * s);
         }
         else if (p.IsMaterial && (Checked || focused))
         {
-            CaptureDrawing.DrawInsideBorder(g, paintedFace, radius, p.Accent, (focused ? 2 : 1) * s);
+            CaptureDrawing.DrawInsideBorder(g, paintedFace, radius, coverage ? Color.Black : p.Accent, (focused ? 2 : 1) * s);
         }
         else if (focused || SystemInformation.HighContrast)
         {
-            using Pen edge = new(Checked || focused ? p.Accent : p.Border, 1.75f * s);
+            using Pen edge = new(coverage ? Color.Black : Checked || focused ? p.Accent : p.Border, 1.75f * s);
             g.DrawPath(edge, card);
         }
+        if (coverage) return;
 
         const TextFormatFlags textFlags = TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine;
         if (p.HasShapedControls && TextRenderer.MeasureText(Text, Font).Width + 90 * s > face.Width)

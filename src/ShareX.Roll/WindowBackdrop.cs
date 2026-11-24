@@ -215,7 +215,7 @@ internal sealed class WindowBackdrop : IDisposable
         private IntPtr memoryDc, bitmap, previousBitmap, bits;
         private Size size;
         private int[] pixels = [];
-        private int[] buttonCoverage = [];
+        private int[] coverage = [];
         private bool painting;
         private int? cachedBackground;
         private readonly bool backgroundOnly, cacheLabel;
@@ -364,9 +364,9 @@ internal sealed class WindowBackdrop : IDisposable
                     ? state.Render(transition) : null;
                 int i = 0;
                 EditorToolStripRenderer? editorRenderer = (control as ToolStrip)?.Renderer as EditorToolStripRenderer;
-                if (glass && (CaptureButtonPainter.HasBackdrop(control) || editorRenderer != null))
+                if (glass && (BackdropSnapshot.HasCoverageMask(control) || editorRenderer != null))
                 {
-                    if (buttonCoverage.Length != pixels.Length) buttonCoverage = GC.AllocateUninitializedArray<int>(pixels.Length);
+                    if (coverage.Length != pixels.Length) coverage = GC.AllocateUninitializedArray<int>(pixels.Length);
                     if (editorRenderer != null)
                     {
                         editorRenderer.PaintingCoverage = true;
@@ -374,10 +374,10 @@ internal sealed class WindowBackdrop : IDisposable
                         finally { editorRenderer.PaintingCoverage = false; }
                     }
                     else
-                        using (Graphics graphics = Graphics.FromHdc(memoryDc)) CaptureButtonPainter.PaintBackdrop(control, graphics);
+                        using (Graphics graphics = Graphics.FromHdc(memoryDc)) BackdropSnapshot.PaintCoverageMask(control, graphics);
                     GdiFlush();
-                    Marshal.Copy(bits, buttonCoverage, 0, buttonCoverage.Length);
-                    BackdropSnapshot.RemoveButtonMatte(output, buttonCoverage, matte);
+                    Marshal.Copy(bits, coverage, 0, coverage.Length);
+                    BackdropSnapshot.RemoveCoverageMatte(output, coverage, matte);
                     i = output.Length;
                 }
                 if (material != null)
@@ -457,7 +457,7 @@ internal sealed class WindowBackdrop : IDisposable
             if (memoryDc != IntPtr.Zero) DeleteDC(memoryDc);
             memoryDc = bitmap = previousBitmap = bits = IntPtr.Zero;
             pixels = [];
-            buttonCoverage = [];
+            coverage = [];
             cachedBackground = null;
             pixelsDirty = true;
             paintedPalette = null;

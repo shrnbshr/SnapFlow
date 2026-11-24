@@ -312,6 +312,50 @@ internal static class SoftwareStyleRegression
     private static int ColorDistance(Color a, Color b) =>
         Math.Max(Math.Abs(a.R - b.R), Math.Max(Math.Abs(a.G - b.G), Math.Abs(a.B - b.B)));
 
+    internal static void VerifyToggleCorners()
+    {
+        bool originalMotion = UiMotion.UserEnabled;
+        UiMotion.UserEnabled = false;
+        try
+        {
+            using Panel parent = new();
+            MotionToggle toggle = new() { Name = "toggleCornerProbe" };
+            parent.Controls.Add(toggle);
+            _ = toggle.Handle;
+            FieldInfo deviceDpi = typeof(Control).GetField("_deviceDpi", Members)!;
+            foreach (int dpi in new[] { 96, 120, 144, 168, 192 })
+            foreach (AppearanceMode mode in new[] { AppearanceMode.Light, AppearanceMode.Dark })
+            {
+                float scale = dpi / 96f;
+                deviceDpi.SetValue(toggle, dpi);
+                CapturePalette material = CapturePalette.For(mode, SoftwareStyle.MaterialYou);
+                toggle.Palette = material;
+                toggle.Size = Size.Round(new SizeF(46 * scale, 28 * scale));
+                foreach (SoftwareStyle style in new[] { SoftwareStyle.WinUI, SoftwareStyle.Claude })
+                {
+                    CapturePalette palette = CapturePalette.For(mode, style);
+                    toggle.Palette = palette;
+                    parent.BackColor = palette.Surface;
+                    foreach (bool enabled in new[] { false, true })
+                    foreach (bool isChecked in new[] { false, true })
+                    {
+                        toggle.Name = $"{style} {mode} switch (enabled: {enabled}, checked: {isChecked})";
+                        toggle.Enabled = enabled;
+                        toggle.Checked = isChecked;
+                        using Bitmap bitmap = RenderControl(toggle);
+                        Color fill = bitmap.GetPixel(bitmap.Width / 2, bitmap.Height / 2);
+                        Color edge = enabled ? isChecked ? palette.Accent : palette.FieldBorder : palette.Border;
+                        VerifyRoundedCorner(toggle, bitmap, MotionToggle.TrackBounds(toggle.ClientSize, scale), 12 * scale,
+                            parent.BackColor, fill, edge);
+                        Check(toggle.Region is { } region && !region.IsVisible(0, toggle.Height / 2) &&
+                            region.IsVisible(toggle.Width / 2, toggle.Height / 2), $"{toggle.Name} keeps its pointer gutter and center");
+                    }
+                }
+            }
+        }
+        finally { UiMotion.UserEnabled = originalMotion; }
+    }
+
     private static void VerifyRoundedCorner(Control control, Bitmap bitmap, RectangleF hitFace, float radius,
         Color background, Color fill, Color ink)
     {

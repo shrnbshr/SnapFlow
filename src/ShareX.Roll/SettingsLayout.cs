@@ -1,12 +1,18 @@
 // GPL-3.0-or-later. Shared geometry for settings rows; values are logical pixels.
 namespace ShareX.Roll;
 
-internal sealed class SettingsOptionHeader : TableLayoutPanel
+internal sealed class SettingsOptionHeader : TableLayoutPanel, IBackdropCoverage
 {
     protected override void OnPaintBackground(PaintEventArgs e)
     {
         if (Parent is SettingsGroup group) group.PaintChildBackground(this, e.Graphics);
         else base.OnPaintBackground(e);
+    }
+
+    void IBackdropCoverage.PaintBackgroundCoverage(Graphics graphics)
+    {
+        if (Parent is SettingsGroup group) group.PaintChildBackground(this, graphics, coverage: true);
+        else graphics.Clear(Color.Black);
     }
 }
 

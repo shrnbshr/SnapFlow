@@ -16,6 +16,6 @@
 .\build-installer.ps1 -IsccPath 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
 ```
 
-脚本生成 `dist/SnapFlow-<版本>-setup-x64.exe`、对应的 `SnapFlow-<版本>-source.zip` 和文件哈希清单。便携版仍由 `build-capture.ps1` 单独构建。每次使用新的隔离发布目录，检查并排除个人配置、日志及调试符号。
+脚本生成 `dist/SnapFlow-setup-x64.exe`、对应的 `SnapFlow-<版本>-source.zip` 和文件哈希清单。安装包版本可在安装向导和文件属性中查看。便携版仍由 `build-capture.ps1` 单独构建。每次使用新的隔离发布目录，检查并排除个人配置、日志及调试符号。
 
 简繁中文语言文件来自 [Inno Setup 官方翻译索引](https://jrsoftware.org/files/istrans/) 指向的官方源码仓库 `Files/Languages/ChineseSimplified.isl` 和 `ChineseTraditional.isl`，保留原文件中的贡献者说明；文件声明适用于 Inno Setup 6.5.0+。英文使用编译器自带的 Default.isl。

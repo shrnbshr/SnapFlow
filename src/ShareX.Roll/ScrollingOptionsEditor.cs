@@ -116,7 +116,7 @@ internal sealed class ScrollingOptionsEditor : TableLayoutPanel
     }
 }
 
-internal sealed class SettingsDisclosure : Button
+internal sealed class SettingsDisclosure : Button, IBackdropCoverage
 {
     internal CapturePalette Palette { get; set; } = CapturePalette.Light;
     private bool expanded;
@@ -175,12 +175,14 @@ internal sealed class SettingsDisclosure : Button
     protected override void OnMouseLeave(EventArgs e) { base.OnMouseLeave(e); hover.SpringTo(0, ButtonElevation.ResponseMilliseconds); }
     protected override void OnGotFocus(EventArgs e) { base.OnGotFocus(e); Invalidate(); }
     protected override void OnLostFocus(EventArgs e) { base.OnLostFocus(e); Invalidate(); }
-    protected override void OnPaint(PaintEventArgs e)
+    void IBackdropCoverage.PaintBackgroundCoverage(Graphics graphics) => PaintDisclosure(graphics, coverage: true);
+    protected override void OnPaint(PaintEventArgs e) => PaintDisclosure(e.Graphics, coverage: false);
+
+    private void PaintDisclosure(Graphics g, bool coverage)
     {
-        Graphics g = e.Graphics;
         float s = DeviceDpi / 96f;
-        if (Parent is SettingsGroup group) group.PaintChildBackground(this, g);
-        else g.Clear(Parent?.BackColor ?? Palette.Surface);
+        if (Parent is SettingsGroup group) group.PaintChildBackground(this, g, coverage);
+        else g.Clear(coverage ? Color.Black : Parent?.BackColor ?? Palette.Surface);
         g.SmoothingMode = SmoothingMode.AntiAlias;
         RectangleF face = ButtonElevation.CompactFaceBounds(ClientSize, s);
         elevation.PaintShadow(g, ClientSize, s, Palette.Background.GetBrightness() < .5f, Enabled && Palette.Style == SoftwareStyle.Default ? hover.Value : 0, compact: true, unified: true);
@@ -192,14 +194,15 @@ internal sealed class SettingsDisclosure : Button
         Color resting = Palette.IsMaterial ? Expanded ? Palette.Tint : Palette.RaisedSurface : Parent?.BackColor ?? Palette.Surface;
         Color background = Palette.IsWinUI ? Palette.WinUIHoverFill(resting, Enabled ? hover.Value : 0) :
             CaptureDrawing.Blend(resting, ButtonElevation.Surface(Palette), Palette.IsClaude ? emphasis * .4f : hover.Value);
-        using SolidBrush fill = new(background);
+        using SolidBrush fill = new(coverage ? Color.Black : background);
         g.FillPath(fill, shape);
         if (Focused && ShowFocusCues || SystemInformation.HighContrast)
         {
-            using Pen edge = new(Palette.Accent, 1.5f * s);
+            using Pen edge = new(coverage ? Color.Black : Palette.Accent, 1.5f * s);
             if (Palette.HasShapedControls) CaptureDrawing.DrawInsideBorder(g, face, radius, edge.Color, edge.Width);
             else g.DrawPath(edge, shape);
         }
+        if (coverage) return;
         TextRenderer.DrawText(g, Text, Font, new Rectangle((int)(SettingsLayout.Inset * s), 0, Math.Max(0, Width - (int)(2 * SettingsLayout.Inset * s)), Height),
             Palette.IsMaterial && Expanded ? Palette.TintText : CaptureDrawing.Blend(Palette.Text, Palette.Accent, emphasis),
             TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | UiLanguage.TextDirection);

@@ -30,6 +30,16 @@ internal static class Program
         Application.EnableVisualStyles();
         Application.SetUnhandledExceptionMode(UnhandledExceptionMode.ThrowException);
         Application.SetCompatibleTextRenderingDefault(false);
+        if (args.Contains("--rounded-edges"))
+        {
+            try
+            {
+                if (!args.Contains("--toggle-corners")) AcrylicBackdropRegression.VerifySettingsCorners();
+                if (!args.Contains("--settings-corners")) SoftwareStyleRegression.VerifyToggleCorners();
+                return 0;
+            }
+            catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }
+        }
         if (args.Contains("--editor-winui-hover"))
         {
             try { EditorChromeRegression.VerifyWinUIHover(); return 0; }
@@ -89,6 +99,7 @@ internal static class Program
                 else if (args.Contains("--transparency-flicker")) await TransparencyFlickerRegression.RunAsync(main, args.Contains("--baseline"));
                 else if (args.Contains("--transparency-settings")) await TransparencySettingsRegression.RunAsync(main);
                 else if (args.Contains("--backdrop-transition")) await BackdropTransitionRegression.RunAsync(main, args.Contains("--baseline"));
+                else if (args.Contains("--settings-corners-desktop")) await AcrylicBackdropRegression.VerifySettingsCornersOnDesktopAsync(main);
                 else if (args.Contains("--acrylic-backdrop")) await AcrylicBackdropRegression.RunAsync(main);
                 else if (args.Contains("--layout-consistency")) await LayoutConsistencyRegression.RunAsync(main);
                 else if (args.Contains("--settings-endpoints")) await SettingsEndpointsRegression.RunAsync(main, args.Contains("--desktop-pointer"));

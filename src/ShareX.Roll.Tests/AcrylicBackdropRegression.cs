@@ -226,6 +226,84 @@ internal static class AcrylicBackdropRegression
         }
     }
 
+    internal static void VerifySettingsCorners()
+    {
+        foreach (SoftwareStyle style in new[] { SoftwareStyle.Default, SoftwareStyle.WinUI })
+        foreach (AppearanceMode mode in new[] { AppearanceMode.Light, AppearanceMode.Dark })
+        {
+            CapturePalette palette = CapturePalette.For(mode, style);
+            using SettingsGroup group = new() { Size = new Size(224, 64) };
+            using SettingsOptionHeader header = new() { Dock = DockStyle.Fill };
+            group.Controls.Add(header);
+            group.ApplyPalette(palette, inSettingsPage: true);
+            using Bitmap image = new(group.Width, group.Height);
+            using Bitmap mask = new(group.Width, group.Height);
+            group.DrawToBitmap(image, group.ClientRectangle);
+            group.ApplyPalette(palette with { Background = Color.White, Surface = Color.Black, Border = Color.Black }, inSettingsPage: true);
+            group.DrawToBitmap(mask, group.ClientRectangle);
+            group.ApplyPalette(palette, inSettingsPage: true);
+            BackdropSnapshot snapshot = BackdropSnapshot.Capture(group, image, palette);
+            int blended = 0, mismatched = 0;
+            for (int y = 0; y < image.Height; y++)
+            for (int x = 0; x < image.Width; x++)
+            {
+                int white = mask.GetPixel(x, y).R;
+                uint transmission = snapshot.Pixels[y * image.Width + x] >> 24;
+                uint expected = ((snapshot.Background >> 24) * (uint)white + 127) / 255;
+                if (transmission != expected) mismatched++;
+                if (expected > 0 && expected < snapshot.Background >> 24) blended++;
+            }
+            Check(blended > 4 && mismatched == 0,
+                $"{style} {mode}: settings card and embedded header preserve {blended} partially transparent pixels ({mismatched} mismatches)");
+        }
+    }
+
+    internal static async Task VerifySettingsCornersOnDesktopAsync(MainForm main)
+    {
+        ApplicationPreferences preferences = Field<ApplicationPreferences>(main, "preferences").Clone();
+        preferences.Style = SoftwareStyle.Default;
+        preferences.Appearance = AppearanceMode.Dark;
+        preferences.TransparencyEnabled = true;
+        preferences.AnimationsEnabled = false;
+        Set(main, "preferences", preferences);
+        Call(main, "ApplyAppearance");
+        Check(Field<WindowBackdrop>(main, "windowBackdrop").IsActive, "the desktop probe has native acrylic enabled");
+        Rectangle work = Screen.FromControl(main).WorkingArea;
+        main.Bounds = Rectangle.Inflate(work, -24, -24);
+        main.TopMost = true;
+        using BackgroundWindow background = new()
+        {
+            FormBorderStyle = FormBorderStyle.None, ShowInTaskbar = false, StartPosition = FormStartPosition.Manual,
+            Bounds = work, TopMost = true
+        };
+        background.Show();
+        main.ForceActivate();
+        Find<Button>(main, "settingsButton").PerformClick();
+        await Task.Delay(250);
+        SettingsGroup row = Find<SettingsGroup>(main, "motionRow");
+        string output = Path.GetFullPath("settings-corner-frames");
+        Directory.CreateDirectory(output);
+        using Bitmap red = await CaptureAsync(main, background, Color.Red, Path.Combine(output, "red.png"));
+        using Bitmap blue = await CaptureAsync(main, background, Color.Blue, Path.Combine(output, "blue.png"));
+        Point corner = FramePoint(main, main.PointToClient(row.PointToScreen(new Point(row.Width - 1, 0))));
+        int radius = (int)Math.Ceiling(16 * row.DeviceDpi / 96f);
+        int Response(int x, int y)
+        {
+            Color warm = red.GetPixel(corner.X - x, corner.Y + y), cool = blue.GetPixel(corner.X - x, corner.Y + y);
+            return warm.R - warm.B - cool.R + cool.B;
+        }
+        int outside = Response(0, 0), inside = Response(radius, radius);
+        Check(outside >= 8 && Math.Abs(inside) <= 2, $"the corner exterior transmits the desktop while the card interior stays opaque ({outside}/{inside})");
+        int blended = 0;
+        for (int y = 0; y < radius; y++)
+        for (int x = 0; x < radius; x++)
+        {
+            int response = Response(x, y);
+            if (response > outside * .15 && response < outside * .85) blended++;
+        }
+        Check(blended > 4, $"the live settings corner has {blended} partially transparent edge pixels at {row.DeviceDpi} DPI");
+    }
+
     private static void VerifySnapshotPixels()
     {
         foreach (CapturePalette palette in new[] { CapturePalette.Dark, CapturePalette.Light })
